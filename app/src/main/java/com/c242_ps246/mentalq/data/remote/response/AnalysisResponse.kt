@@ -1,7 +1,5 @@
 package com.c242_ps246.mentalq.data.remote.response
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 
 data class AnalysisResponse(
@@ -15,9 +13,7 @@ data class AnalysisResponse(
     val listAnalysis: List<ListAnalysisItem>
 )
 
-@Entity(tableName = "analysis")
 data class ListAnalysisItem(
-    @PrimaryKey
     @field:SerializedName("analysis_id")
     val id: String,
 

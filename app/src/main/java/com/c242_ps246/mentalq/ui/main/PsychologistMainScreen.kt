@@ -36,7 +36,7 @@ fun PsychologistMainScreen(
     val currentRoute = navBackStackEntry?.destination?.route
 
     val shouldShowBottomBar = when (currentRoute) {
-        Routes.DASHBOARD, Routes.CHAT, Routes.PROFILE -> true
+        Routes.CHAT, Routes.PROFILE -> true
         else -> false
     }
 
@@ -84,13 +84,7 @@ fun PsychologistMainScreen(
                 val chatId = backStackEntry.arguments?.getString("chatId") ?: return@composable
                 ChatRoomScreen(
                     chatRoomId = chatId,
-                    onBackClick = {
-                        navController.navigate(Routes.CHAT) {
-                            popUpTo(Routes.CHAT_ROOM) {
-                                inclusive = true
-                            }
-                        }
-                    }
+                    onBackClick = { navController.popBackStack() }
                 )
             }
             composable(
@@ -114,6 +108,7 @@ fun PsychologistMainScreen(
                                 saveState = true
                             }
                             launchSingleTop = true
+                            restoreState = true
                         }
                     }
                 },

@@ -17,7 +17,8 @@ class VoiceToTextParser(
     private val _state = MutableStateFlow(VoiceToTextParserState())
     val state = _state.asStateFlow()
 
-    val recognizer = SpeechRecognizer.createSpeechRecognizer(app)
+    private val recognizer = SpeechRecognizer.createSpeechRecognizer(app)
+    private var isDestroyed = false
 
     fun startListening(langCode: String) {
         _state.update {
@@ -31,7 +32,10 @@ class VoiceToTextParser(
             _state.update {
                 it.copy(error = "Speech recognition is not available on this device.")
             }
+            return
         }
+
+        if (isDestroyed) return
 
         val recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
@@ -48,7 +52,16 @@ class VoiceToTextParser(
     }
 
     fun stopListening() {
+        if (isDestroyed) return
         recognizer.stopListening()
+        _state.update { it.copy(isSpeaking = false) }
+    }
+
+    fun destroy() {
+        if (isDestroyed) return
+        recognizer.cancel()
+        recognizer.destroy()
+        isDestroyed = true
         _state.update { it.copy(isSpeaking = false) }
     }
 

@@ -92,25 +92,10 @@ import java.util.Calendar
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun AuthScreen(
-    tokenFromSplash: String? = null,
-    roleFromSplash: String? = null,
     onSuccess: (String) -> Unit
 ) {
-    var splashToken by rememberSaveable { mutableStateOf(tokenFromSplash) }
-    var splashRole by rememberSaveable { mutableStateOf(roleFromSplash) }
-
-    LaunchedEffect(splashToken, splashRole) {
-        if (!splashToken.isNullOrEmpty() && !splashRole.isNullOrEmpty()) {
-            onSuccess(splashRole!!)
-
-            splashToken = null
-            splashRole = null
-        }
-    }
-
     val viewModel: AuthViewModel = hiltViewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val token by viewModel.token.collectAsStateWithLifecycle()
     val role by viewModel.role.collectAsStateWithLifecycle()
 
     var isLogin by rememberSaveable { mutableStateOf(true) }
@@ -129,12 +114,6 @@ fun AuthScreen(
     var updatePasswordSuccess = stringResource(R.string.update_password_success)
     var registerSuccess = stringResource(R.string.register_success)
 
-    LaunchedEffect(token) {
-        if (!token.isNullOrEmpty()) {
-            viewModel.getUserRole()
-        }
-    }
-
     LaunchedEffect(role) {
         if (role != null) {
             val authenticatedRole = role
@@ -150,10 +129,7 @@ fun AuthScreen(
     var showForgotPassword by rememberSaveable { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val clientId = remember {
-        val id = context.getString(R.string.default_web_client_id)
-        id
-    }
+    val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
 
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -193,8 +169,8 @@ fun AuthScreen(
         }
     }
 
-    LaunchedEffect(uiState) {
-        when {
+    LaunchedEffect(uiState, showForgotPassword) {
+        if (!showForgotPassword) when {
             uiState.error != null -> {
                 showToast = true
                 toastMessage = uiState.error ?: loginFailed
@@ -210,12 +186,12 @@ fun AuthScreen(
                 toastType = ToastType.SUCCESS
                 loginButtonLoadingState = false
                 if (isLogin) {
-                    viewModel.getUserRole()
                     val authenticatedRole = role
                     if (authenticatedRole != null) {
                         onSuccess(authenticatedRole)
                     }
                 }
+                viewModel.clearSuccess()
             }
         }
     }
@@ -597,6 +573,12 @@ fun AuthScreen(
                             Button(
                                 onClick = {
                                     loginButtonLoadingState = false
+                                    if (clientId.isBlank()) {
+                                        showToast = true
+                                        toastType = ToastType.ERROR
+                                        toastMessage = "Google Sign-In is not configured."
+                                        return@Button
+                                    }
                                     try {
                                         val gso =
                                             GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -754,7 +736,7 @@ fun AuthScreen(
 fun DateInputField(
     birthdayDate: String,
     onDateChange: (String) -> Unit,
-    minimumAge: Int = 17,
+    minimumAge: Int = 18,
     onValidationError: (String) -> Unit = {}
 ) {
     val context = LocalContext.current

@@ -2,15 +2,19 @@ package com.c242_ps246.mentalq.ui.splash
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -19,24 +23,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.c242_ps246.mentalq.R
-import kotlinx.coroutines.delay
 
 @Composable
 fun SplashScreen(
     navigateToAuthScreen: (String?, String?) -> Unit
 ) {
     val viewModel: SplashViewModel = hiltViewModel()
-    val token by viewModel.token.collectAsState()
-    val role by viewModel.role.collectAsState()
+    val session by viewModel.session.collectAsStateWithLifecycle()
 
-    var isInitialCheckComplete by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(true) }
+    LaunchedEffect(session) {
+        if (session.isLoaded) navigateToAuthScreen(session.token, session.role)
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(color = MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -45,7 +49,7 @@ fun SplashScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.mentalq),
-                contentDescription = "Logo",
+                contentDescription = "MentalQ logo",
                 modifier = Modifier.size(100.dp)
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -58,35 +62,7 @@ fun SplashScreen(
                 )
             )
             Spacer(modifier = Modifier.height(16.dp))
-            if (isLoading) {
-                CircularProgressIndicator(
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        delay(2000)
-        isInitialCheckComplete = true
-    }
-
-    LaunchedEffect(isInitialCheckComplete, token) {
-        if (isInitialCheckComplete) {
-            if (!token.isNullOrEmpty()) {
-                viewModel.getUserRole()
-            } else {
-                isLoading = false
-                navigateToAuthScreen(null, null)
-            }
-        }
-    }
-
-    LaunchedEffect(role) {
-        if (role != null) {
-            isLoading = false
-            navigateToAuthScreen(token, role)
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     }
 }

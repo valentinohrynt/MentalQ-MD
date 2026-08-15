@@ -93,14 +93,10 @@ fun MainScreen(
             ) {
                 PsychologistScreen(
                     onBackClick = {
-                        navController.navigate(Routes.DASHBOARD) {
-                            popUpTo(Routes.PSYCHOLOGIST_LIST) {
-                                inclusive = true
-                            }
-                        }
+                        navController.popBackStack()
                     },
-                    onNavigateToMidtransWebView = { userId, price, itemId ->
-                        navController.navigate("${Routes.MIDTRANS_WEBVIEW}/$userId/$price/$itemId")
+                    onNavigateToMidtransWebView = { userId, itemId ->
+                        navController.navigate("${Routes.MIDTRANS_WEBVIEW}/$userId/$itemId")
                     }
                 )
             }
@@ -114,51 +110,47 @@ fun MainScreen(
                 )
             ) { backStackEntry ->
                 val orderId = backStackEntry.arguments?.getString("orderId") ?: return@composable
-                val userId = backStackEntry.arguments?.getString("userId") ?: return@composable
-                val itemId = backStackEntry.arguments?.getString("itemId") ?: return@composable
                 MidtransScreen(
                     orderId = orderId,
-                    userId = userId,
-                    itemId = itemId,
                     onSuccess = { chatId ->
+                        navController.navigate(Routes.CHAT) {
+                            popUpTo(Routes.DASHBOARD) { saveState = true }
+                            launchSingleTop = true
+                        }
                         navController.navigate("${Routes.CHAT_ROOM}/$chatId")
                     },
                     onFailed = {
                         navController.navigate(Routes.PSYCHOLOGIST_LIST) {
-                            popUpTo(Routes.MIDTRANS_MAIN_SCREEN) {
-                                inclusive = true
-                            }
+                            popUpTo(backStackEntry.destination.id) { inclusive = true }
+                            launchSingleTop = true
                         }
                     },
                     onBackClick = {
                         navController.navigate(Routes.PSYCHOLOGIST_LIST) {
-                            popUpTo(Routes.MIDTRANS_MAIN_SCREEN) {
-                                inclusive = true
-                            }
+                            popUpTo(backStackEntry.destination.id) { inclusive = true }
+                            launchSingleTop = true
                         }
                     }
                 )
             }
 
             composable(
-                route = "${Routes.MIDTRANS_WEBVIEW}/{userId}/{price}/{itemId}",
+                route = "${Routes.MIDTRANS_WEBVIEW}/{userId}/{itemId}",
                 arguments = listOf(
                     navArgument("userId") { type = NavType.StringType },
-                    navArgument("price") { type = NavType.IntType },
                     navArgument("itemId") { type = NavType.StringType }
                 )
             ) { backStackEntry ->
                 val userId = backStackEntry.arguments?.getString("userId") ?: return@composable
-                val price = backStackEntry.arguments?.getInt("price") ?: return@composable
                 val itemId = backStackEntry.arguments?.getString("itemId") ?: return@composable
                 MidtransWebView(
-                    userId = userId,
-                    price = price,
                     itemId = itemId,
                     onBackClick = { orderId ->
-                        navController.navigate("${Routes.MIDTRANS_MAIN_SCREEN}/$orderId/$userId/$itemId") {
-                            popUpTo(Routes.MIDTRANS_WEBVIEW) {
-                                inclusive = true
+                        if (orderId == null) {
+                            navController.popBackStack()
+                        } else {
+                            navController.navigate("${Routes.MIDTRANS_MAIN_SCREEN}/$orderId/$userId/$itemId") {
+                                popUpTo(backStackEntry.destination.id) { inclusive = true }
                             }
                         }
                     }
@@ -185,11 +177,7 @@ fun MainScreen(
                 DetailNoteScreen(
                     noteId = noteId,
                     onBackClick = {
-                        navController.navigate(Routes.NOTE) {
-                            popUpTo(Routes.NOTE_DETAIL) {
-                                inclusive = true
-                            }
-                        }
+                        navController.popBackStack()
                     },
                     application = LocalContext.current.applicationContext as Application
                 )
@@ -204,11 +192,7 @@ fun MainScreen(
                         navController.navigate("${Routes.CHAT_ROOM}/$chatId")
                     },
                     onBackClick = {
-                        navController.navigate(Routes.DASHBOARD) {
-                            popUpTo(Routes.CHAT) {
-                                inclusive = true
-                            }
-                        }
+                        navController.popBackStack(Routes.DASHBOARD, inclusive = false)
                     }
                 )
             }
@@ -222,11 +206,7 @@ fun MainScreen(
                 ChatRoomScreen(
                     chatRoomId = chatId,
                     onBackClick = {
-                        navController.navigate(Routes.CHAT) {
-                            popUpTo(Routes.CHAT_ROOM) {
-                                inclusive = true
-                            }
-                        }
+                        navController.popBackStack()
                     }
                 )
             }
@@ -251,6 +231,7 @@ fun MainScreen(
                                 saveState = true
                             }
                             launchSingleTop = true
+                            restoreState = true
                         }
                     }
                 },

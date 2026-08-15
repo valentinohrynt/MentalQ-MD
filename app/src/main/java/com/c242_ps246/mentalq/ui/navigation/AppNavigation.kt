@@ -3,7 +3,6 @@ package com.c242_ps246.mentalq.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -19,22 +18,17 @@ import com.c242_ps246.mentalq.ui.main.PsychologistMainScreen
 @Composable
 fun AppNavigation(
     modifier: Modifier = Modifier,
-    tokenFromSplash: String? = null,
     roleFromSplash: String? = null
 ) {
     val navController = rememberNavController()
-    var hasLoggedOut by rememberSaveable { mutableStateOf(false) }
-    rememberCoroutineScope()
-
-    var splashToken by rememberSaveable { mutableStateOf(tokenFromSplash) }
-    var splashRole by rememberSaveable { mutableStateOf(roleFromSplash) }
+    var sessionRole by rememberSaveable { mutableStateOf(roleFromSplash) }
 
     NavHost(
         navController = navController,
-        startDestination = if (splashRole == null) {
+        startDestination = if (sessionRole == null) {
             Routes.AUTH
         } else {
-            when (splashRole) {
+            when (sessionRole) {
                 "user" -> {
                     Routes.MAIN_SCREEN
                 }
@@ -56,10 +50,8 @@ fun AppNavigation(
             exitTransition = { slideOutToBottom }
         ) {
             AuthScreen(
-                tokenFromSplash = if (hasLoggedOut) null else tokenFromSplash,
-                roleFromSplash = if (hasLoggedOut) null else roleFromSplash,
                 onSuccess = { authenticatedRole ->
-                    hasLoggedOut = false
+                    sessionRole = authenticatedRole
                     when (authenticatedRole) {
                         "user" -> navController.navigate(Routes.MAIN_SCREEN) {
                             popUpTo(Routes.AUTH) { inclusive = true }
@@ -75,27 +67,25 @@ fun AppNavigation(
         composable(Routes.MAIN_SCREEN) {
             MainScreen(
                 onLogout = {
-                    hasLoggedOut = true
-                    splashToken = null
-                    splashRole = null
+                    sessionRole = null
                     navController.navigate(Routes.AUTH) {
-                        popUpTo(0) { inclusive = true }
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
                     }
                 },
-                userRole = splashRole ?: "user"
+                userRole = sessionRole ?: "user"
             )
         }
         composable(Routes.PSYCHOLOGIST_MAIN_SCREEN) {
             PsychologistMainScreen(
                 onLogout = {
-                    hasLoggedOut = true
-                    splashToken = null
-                    splashRole = null
+                    sessionRole = null
                     navController.navigate(Routes.AUTH) {
-                        popUpTo(0) { inclusive = true }
+                        popUpTo(navController.graph.id) { inclusive = true }
+                        launchSingleTop = true
                     }
                 },
-                userRole = splashRole ?: "psychologist"
+                userRole = sessionRole ?: "psychologist"
             )
         }
     }

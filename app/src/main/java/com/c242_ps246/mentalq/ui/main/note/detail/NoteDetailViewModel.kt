@@ -7,8 +7,8 @@ import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
 import com.c242_ps246.mentalq.data.repository.NoteRepository
 import com.c242_ps246.mentalq.data.repository.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,147 +26,90 @@ class NoteDetailViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(NoteDetailUiState())
     val uiState = _uiState.asStateFlow()
 
-    private val _title = MutableStateFlow(savedStateHandle.get<String>("title") ?: "")
-    val title: StateFlow<String> = _title
+    val title = savedStateHandle.getStateFlow("title", "")
+    val content = savedStateHandle.getStateFlow("content", "")
+    val emotion = savedStateHandle.getStateFlow("emotion", "")
+    val date = savedStateHandle.getStateFlow("date", "")
 
-    private val _content = MutableStateFlow(savedStateHandle.get<String>("content") ?: "")
-    val content: StateFlow<String> = _content
-
-    private val _emotion = MutableStateFlow(savedStateHandle.get<String>("emotion") ?: "")
-    val emotion: StateFlow<String> = _emotion
-
-    private val _date = MutableStateFlow("")
-    val date = _date.asStateFlow()
-    
-    private var currentNoteId: String? = null
-
-    init {
-        viewModelScope.launch {
-            _title.collect { savedStateHandle["title"] = it }
-        }
-        viewModelScope.launch {
-            _content.collect { savedStateHandle["content"] = it }
-        }
-        viewModelScope.launch {
-            _emotion.collect { savedStateHandle["emotion"] = it }
-        }
-        viewModelScope.launch {
-            _date.collect { savedStateHandle["date"] = it }
-        }
-    }
+    private var currentNoteId: String? = savedStateHandle["noteId"]
+    private var isDirty = false
+    private var updateJob: Job? = null
 
     fun loadNote(noteId: String) {
-        if (currentNoteId != noteId || _title.value.isEmpty()) {
-            currentNoteId = noteId
-            savedStateHandle["noteId"] = noteId
+        if (currentNoteId == noteId && _uiState.value.note != null) return
+        currentNoteId = noteId
+        savedStateHandle["noteId"] = noteId
 
-            viewModelScope.launch {
-                _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-                try {
-                    val note = noteRepository.getNoteById(noteId)
-                    if (note != null) {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            note = note,
-                            error = null
-                        )
-
-                        _title.value = note.title ?: ""
-                        _content.value = note.content ?: ""
-                        _date.value = note.createdAt ?: ""
-                        _emotion.value = note.emotion ?: ""
-                    } else {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = "Note not found"
-                        )
-                    }
-                } catch (e: Exception) {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = "Failed to load note: ${e.message}"
-                    )
-                }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            val note = noteRepository.getNoteById(noteId)
+            if (note == null) {
+                _uiState.value = _uiState.value.copy(isLoading = false, error = "Note not found")
+                return@launch
             }
+            _uiState.value = NoteDetailUiState(note = note)
+            savedStateHandle["title"] = note.title.orEmpty()
+            savedStateHandle["content"] = note.content.orEmpty()
+            savedStateHandle["date"] = note.createdAt.orEmpty()
+            savedStateHandle["emotion"] = note.emotion.orEmpty()
+            isDirty = false
         }
     }
 
-    fun updateTitle(newTitle: String) {
-        _title.value = newTitle
-        saveNote()
-    }
+    fun updateTitle(value: String) = updateDraft("title", value)
 
-    fun updateContent(newContent: String) {
-        _content.value = newContent
-        saveNote()
-    }
+    fun updateContent(value: String) = updateDraft("content", value)
 
-    fun updateEmotion(newEmotion: String) {
-        _emotion.value = newEmotion
-        saveNote()
-    }
+    fun updateEmotion(value: String) = updateDraft("emotion", value)
 
-    private var updateJob: kotlinx.coroutines.Job? = null
+    private fun updateDraft(key: String, value: String) {
+        savedStateHandle[key] = value
+        isDirty = true
+        _uiState.value.note?.let { note ->
+            _uiState.value = _uiState.value.copy(
+                note = note.copy(
+                    title = title.value,
+                    content = content.value,
+                    emotion = emotion.value
+                ),
+                isSuccess = false
+            )
+        }
+    }
 
     fun saveNoteImmediately() {
-        viewModelScope.launch {
-            updateJob?.cancel()
+        updateJob?.cancel()
+        val currentNote = _uiState.value.note ?: return
+        if (!isDirty) {
+            _uiState.value = _uiState.value.copy(isSuccess = true)
+            return
+        }
 
-            _uiState.value.note?.let { currentNote ->
-                val updatedNote = currentNote.copy(
-                    title = _title.value,
-                    content = _content.value,
-                    emotion = _emotion.value
-                )
-
-                try {
-                    _uiState.value = _uiState.value.copy(isSaving = true, error = null)
-
-                    when (val result = noteRepository.updateNote(updatedNote)) {
-                        is Result.Success -> {
-                            _uiState.value = _uiState.value.copy(
-                                isSaving = false,
-                                isSuccess = true,
-                                note = result.data,
-                                error = null
-                            )
-                        }
-
-                        is Result.Error -> {
-                            _uiState.value = _uiState.value.copy(
-                                isSaving = false,
-                                isSuccess = false,
-                                error = result.error
-                            )
-                        }
-
-                        Result.Loading -> {
-                            _uiState.value = _uiState.value.copy(isSaving = true)
-                        }
-                    }
-                } catch (e: Exception) {
+        updateJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSaving = true, error = null)
+            val updatedNote = currentNote.copy(
+                title = title.value,
+                content = content.value,
+                emotion = emotion.value
+            )
+            when (val result = noteRepository.updateNote(updatedNote)) {
+                Result.Loading -> Unit
+                is Result.Success -> {
+                    isDirty = false
                     _uiState.value = _uiState.value.copy(
                         isSaving = false,
-                        isSuccess = false,
-                        error = "Failed to save note: ${e.message}"
+                        isSuccess = true,
+                        note = result.data
                     )
                 }
+                is Result.Error -> _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    error = result.error
+                )
             }
-        }
-    }
-
-    private fun saveNote() {
-        _uiState.value.note?.let { currentNote ->
-            val updatedNote = currentNote.copy(
-                title = _title.value,
-                content = _content.value,
-                emotion = _emotion.value
-            )
-            _uiState.value = _uiState.value.copy(note = updatedNote)
         }
     }
 }

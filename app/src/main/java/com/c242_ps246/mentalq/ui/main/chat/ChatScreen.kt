@@ -70,25 +70,25 @@ fun ChatScreen(
         ) {
             if (chatRooms.isEmpty() && !uiState.isLoading) {
                 EmptyState(
-//                    title = stringResource(R.string.no_messages),
-//                    subtitle = stringResource(R.string.no_messages_desc)
-                    title = "Maintenance",
-                    subtitle = "This feature is under maintenance"
+                    title = stringResource(R.string.no_messages),
+                    subtitle = uiState.error ?: stringResource(R.string.no_messages_desc)
                 )
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(
-                        items = chatRooms,
-                        key = { it.id }
-                    ) { chatRoom ->
-                        ChatPreviewItem(
-                            chatRoom = chatRoom,
-                            currentUserId = userId!!,
-                            onClick = { onNavigateToChatRoom(chatRoom.id) }
-                        )
+                userId?.let { currentUserId ->
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        items(
+                            items = chatRooms,
+                            key = { it.id }
+                        ) { chatRoom ->
+                            ChatPreviewItem(
+                                chatRoom = chatRoom,
+                                currentUserId = currentUserId,
+                                onClick = { onNavigateToChatRoom(chatRoom.id) }
+                            )
+                        }
                     }
                 }
             }
@@ -180,7 +180,7 @@ private fun ChatPreviewItem(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = formatTimestamp(chatRoom.updatedAt.toLong()),
+                        text = chatRoom.updatedAt.toLongOrNull()?.let(::formatTimestamp).orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -43,7 +43,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,12 +55,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.c242_ps246.mentalq.R
 import com.c242_ps246.mentalq.data.remote.response.ChatMessageItem
 import com.c242_ps246.mentalq.ui.component.CustomDialog
 import com.c242_ps246.mentalq.ui.utils.Utils.formatTimestamp
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,15 +70,15 @@ fun ChatRoomScreen(
 ) {
     val viewModel: ChatRoomViewModel = hiltViewModel()
 
-    val uiState by viewModel.uiState.collectAsState()
-    val userId by viewModel.userId.collectAsState()
-    val messages by viewModel.messages.collectAsState()
-    val profileUrl by viewModel.profileUrl.collectAsState()
-    val userName by viewModel.userName.collectAsState()
-    val psychologistPrefix by viewModel.psychologistPrefix.collectAsState()
-    val psychologistSuffix by viewModel.psychologistSuffix.collectAsState()
-    val userRole by viewModel.userRole.collectAsState()
-    val isEnded by viewModel.isEnded.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val userId by viewModel.userId.collectAsStateWithLifecycle()
+    val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val profileUrl by viewModel.profileUrl.collectAsStateWithLifecycle()
+    val userName by viewModel.userName.collectAsStateWithLifecycle()
+    val psychologistPrefix by viewModel.psychologistPrefix.collectAsStateWithLifecycle()
+    val psychologistSuffix by viewModel.psychologistSuffix.collectAsStateWithLifecycle()
+    val userRole by viewModel.userRole.collectAsStateWithLifecycle()
+    val isEnded by viewModel.isEnded.collectAsStateWithLifecycle()
 
 
 
@@ -87,22 +86,20 @@ fun ChatRoomScreen(
         onBackClick()
     }
 
-    LaunchedEffect(userId) {
+    LaunchedEffect(userId, chatRoomId) {
         userId?.let {
             viewModel.getMessages(chatRoomId)
             viewModel.getProfileUrl(chatRoomId, it)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
             viewModel.getSessionStatus(chatRoomId)
-            delay(5000L)
         }
     }
 
     if (uiState.isLoading) {
         CircularProgressIndicator()
+    } else if (uiState.error != null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(uiState.error.orEmpty())
+        }
     } else {
         userId?.let { nonNullUserId ->
             Scaffold(
@@ -136,13 +133,15 @@ fun ChatRoomScreen(
                         currentUserRole = userRole.orEmpty(),
                         currentUserId = nonNullUserId,
                         isEnded = isEnded,
-                        chatRoomId = chatRoomId,
                         onSendMessage = { message ->
                             viewModel.sendMessage(
                                 chatRoomId = chatRoomId,
                                 userId = nonNullUserId,
                                 messageText = message
                             )
+                        },
+                        onEndSession = {
+                            viewModel.endSession(chatRoomId)
                         }
                     )
                 }
@@ -210,14 +209,12 @@ fun ChatMessages(
     messages: List<ChatMessageItem>,
     currentUserRole: String,
     isEnded: Boolean,
-    chatRoomId: String,
     currentUserId: String,
-    onSendMessage: (String) -> Unit
+    onSendMessage: (String) -> Unit,
+    onEndSession: () -> Unit
 ) {
 
     val hideKeyboard = LocalSoftwareKeyboardController.current
-
-    val viewModel: ChatRoomViewModel = hiltViewModel()
 
     val messageText = remember {
         mutableStateOf("")
@@ -232,7 +229,7 @@ fun ChatMessages(
 
     LaunchedEffect(messages) {
         if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size)
+            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 
@@ -251,7 +248,7 @@ fun ChatMessages(
                     .weight(1f),
                 state = listState
             ) {
-                items(items = messages) {
+                items(items = messages, key = { it.id }) {
                     ChatBubble(
                         message = it,
                         currentUserId = currentUserId
@@ -365,7 +362,7 @@ fun ChatMessages(
                 },
                 onConfirm = {
                     isShowDialog.value = false
-                    viewModel.endSession(chatRoomId)
+                    onEndSession()
                 }
             )
         }
@@ -411,7 +408,7 @@ fun ChatBubble(
                 )
 
                 Text(
-                    text = formatTimestamp(message.createdAt!!.toLong()),
+                    text = message.createdAt?.toLongOrNull()?.let(::formatTimestamp).orEmpty(),
                     color = MaterialTheme.colorScheme.onPrimary,
                     fontSize = 12.sp,
                     modifier = Modifier

@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
 import com.c242_ps246.mentalq.data.repository.NoteRepository
 import com.c242_ps246.mentalq.data.repository.Result
-import com.c242_ps246.mentalq.ui.utils.Utils.fetchServerTime
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +14,6 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
 import javax.inject.Inject
 
 data class NoteScreenUiState(
@@ -23,7 +22,7 @@ data class NoteScreenUiState(
     val success: Boolean = false,
     val error: String? = null,
     val isCreatingNewNote: Boolean = false,
-    val canAddNewNote: Boolean? = true
+    val canAddNewNote: Boolean = true
 )
 
 @HiltViewModel
@@ -33,139 +32,105 @@ class NoteViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(NoteScreenUiState())
     val uiState = _uiState.asStateFlow()
 
-    private val _listNote = MutableStateFlow<List<ListNoteItem>?>(emptyList())
+    private val _listNote = MutableStateFlow<List<ListNoteItem>>(emptyList())
     val listNote = _listNote.asStateFlow()
 
     private val _navigateToNoteDetail = MutableStateFlow<String?>(null)
     val navigateToNoteDetail: StateFlow<String?> = _navigateToNoteDetail.asStateFlow()
 
-    private val _todayDate = MutableStateFlow<LocalDate?>(null)
+    private var notesJob: Job? = null
 
     init {
         loadAllNotes()
-        updateTodayFromServer()
-    }
-
-    private fun updateTodayFromServer() {
-        fetchServerTime(
-            onTimeFetched = { serverTime ->
-                val today = serverTime.toLocalDate()
-                _todayDate.value = today
-            },
-            onError = { error ->
-            }
-        )
     }
 
     private fun isNoteTodayAlreadyAdded(): Boolean {
-        val currentServerDate = _todayDate.value ?: return false
-        val currentNoteList = _listNote.value ?: return false
-
-        return currentNoteList.any { note ->
+        val today = LocalDate.now(APP_ZONE)
+        return _listNote.value.any { note ->
             note.createdAt?.let { createdAt ->
-                try {
-                    val instant = Instant.parse(createdAt)
-                    val createdAtDateTime = instant.atZone(ZoneId.systemDefault()).toLocalDate()
-
-                    createdAtDateTime == currentServerDate
-                } catch (e: DateTimeParseException) {
-                    false
-                }
-            } == true
+                runCatching {
+                    Instant.parse(createdAt).atZone(APP_ZONE).toLocalDate() == today
+                }.getOrDefault(false)
+            } ?: false
         }
     }
 
     fun loadAllNotes() {
-        viewModelScope.launch {
-            noteRepository.getAllNotes().observeForever { result ->
+        notesJob?.cancel()
+        notesJob = viewModelScope.launch {
+            noteRepository.getAllNotes().collect { result ->
                 when (result) {
-                    Result.Loading -> {
-                        _uiState.value = _uiState.value.copy(isLoading = true)
-                    }
-
+                    Result.Loading -> _uiState.value = _uiState.value.copy(isLoading = true)
                     is Result.Success -> {
-                        val notes = result.data
+                        _listNote.value = result.data
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             error = null,
-                            success = true
-                        )
-                        _listNote.value = notes
-                    }
-
-                    is Result.Error -> {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = result.error
+                            success = true,
+                            canAddNewNote = !isNoteTodayAlreadyAdded()
                         )
                     }
+                    is Result.Error -> _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = result.error
+                    )
                 }
             }
         }
     }
 
     fun addNote(note: ListNoteItem) {
+        if (isNoteTodayAlreadyAdded()) {
+            _uiState.value = _uiState.value.copy(
+                isCreatingNewNote = false,
+                isLoading = false,
+                canAddNewNote = false
+            )
+            return
+        }
+
         viewModelScope.launch {
-            val cannotAddNote = isNoteTodayAlreadyAdded()
-            if (cannotAddNote) {
-                _uiState.value = _uiState.value.copy(
-                    isCreatingNewNote = false,
-                    isLoading = false,
-                    canAddNewNote = false
-                )
-                return@launch
-            }
-            noteRepository.insertNote(note).observeForever { result ->
-                when (result) {
-                    Result.Loading -> {
-                        _uiState.value = _uiState.value.copy(isCreatingNewNote = true)
-                    }
-
-                    is Result.Success -> {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = null,
-                            success = true
-                        )
-                        _listNote.value = _listNote.value?.plus(result.data)
-                        _navigateToNoteDetail.value = result.data.id
-                    }
-
-                    is Result.Error -> {
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = result.error
-                        )
-                    }
+            _uiState.value = _uiState.value.copy(isCreatingNewNote = true, error = null)
+            when (val result = noteRepository.insertNote(note)) {
+                Result.Loading -> Unit
+                is Result.Success -> {
+                    _listNote.value = (_listNote.value + result.data)
+                        .sortedByDescending { it.createdAt }
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isCreatingNewNote = false,
+                        error = null,
+                        success = true,
+                        canAddNewNote = false
+                    )
+                    _navigateToNoteDetail.value = result.data.id
                 }
+                is Result.Error -> _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    isCreatingNewNote = false,
+                    error = result.error
+                )
             }
         }
     }
 
     fun deleteNote(noteId: String) {
         viewModelScope.launch {
-            noteRepository.deleteNoteById(noteId).observeForever { result ->
-                when (result) {
-                    Result.Loading -> {
-
-                    }
-
-                    is Result.Success -> {
-                        _uiState.value =
-                            _uiState.value.copy(
-                                isLoading = false,
-                                error = null,
-                                success = true,
-                                canAddNewNote = true
-                            )
-                        _listNote.value = _listNote.value?.filter { it.id != noteId }
-                    }
-
-                    is Result.Error -> {
-                        _uiState.value =
-                            _uiState.value.copy(isLoading = false, error = result.error)
-                    }
+            when (val result = noteRepository.deleteNoteById(noteId)) {
+                Result.Loading -> Unit
+                is Result.Success -> {
+                    _listNote.value = _listNote.value.filterNot { it.id == noteId }
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = null,
+                        success = true,
+                        canAddNewNote = !isNoteTodayAlreadyAdded()
+                    )
                 }
+                is Result.Error -> _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = result.error
+                )
             }
         }
     }
@@ -176,5 +141,9 @@ class NoteViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private companion object {
+        val APP_ZONE: ZoneId = ZoneId.of("Asia/Jakarta")
     }
 }

@@ -1,12 +1,8 @@
 package com.c242_ps246.mentalq.data.remote.response
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 
-@Entity(tableName = "chat_room")
 data class ChatRoomItem(
-    @PrimaryKey
     @field:SerializedName("id")
     val id: String,
 
@@ -50,9 +46,7 @@ data class ChatRoomItem(
     val deletedAt: String? = null
 )
 
-@Entity(tableName = "chat_message")
 data class ChatMessageItem(
-    @PrimaryKey
     @field:SerializedName("id")
     val id: String = "",
 

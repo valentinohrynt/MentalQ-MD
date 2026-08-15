@@ -1,64 +1,55 @@
 package com.c242_ps246.mentalq.data.repository
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.liveData
 import com.c242_ps246.mentalq.data.local.room.UserDao
+import com.c242_ps246.mentalq.data.local.room.toEntity
 import com.c242_ps246.mentalq.data.remote.response.UserData
 import com.c242_ps246.mentalq.data.remote.retrofit.UserApiService
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
-import org.json.JSONObject
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class UserRepository(
+@Singleton
+class UserRepository @Inject constructor(
     private val userApiService: UserApiService,
     private val userDao: UserDao
 ) {
-    fun updateProfile(
+    suspend fun updateProfile(
         name: RequestBody,
         email: RequestBody,
         birthday: RequestBody,
         profileImage: MultipartBody.Part?
-    ): LiveData<Result<UserData?>> = liveData {
-        emit(Result.Loading)
-        try {
+    ): Result<UserData?> = try {
             val response = userApiService.updateProfile(profileImage, name, email, birthday)
             if (response.isSuccessful) {
                 val body = response.body()
-                userDao.clearUserData()
-                body?.user?.let { userDao.insertUser(it) }
-                emit(Result.Success(body?.user))
-            } else {
-                val errorBody = response.errorBody()?.string()
-                val errorMessage = if (errorBody != null) {
-                    JSONObject(errorBody).getString("message")
+                if (body?.error == true) {
+                    Result.Error(body.message ?: "Unable to update the profile")
                 } else {
-                    "Unknown error occurred"
+                    userDao.clearUserData()
+                    body?.user?.let { userDao.insertUser(it.toEntity()) }
+                    Result.Success(body?.user)
                 }
-                emit(Result.Error(errorMessage))
+            } else {
+                Result.Error(response.errorMessage("Unable to update the profile"))
             }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
+        } catch (error: Exception) {
+            Result.Error(error.toUserMessage("Unable to update the profile"))
         }
-    }
 
-    fun getUserDataById(userId: String): LiveData<Result<UserData?>> = liveData {
-        emit(Result.Loading)
-        try {
-            val response = userApiService.getUserById(userId)
+    suspend fun getUserData(): Result<UserData?> = try {
+            val response = userApiService.getUser()
             if (response.isSuccessful) {
                 val body = response.body()
-                emit(Result.Success(body?.user))
-            } else {
-                val errorBody = response.errorBody()?.string()
-                val errorMessage = if (errorBody != null) {
-                    JSONObject(errorBody).getString("message")
+                if (body?.error == true) {
+                    Result.Error(body.message ?: "Unable to fetch the user")
                 } else {
-                    "Unknown error occurred"
+                    Result.Success(body?.user)
                 }
-                emit(Result.Error(errorMessage))
+            } else {
+                Result.Error(response.errorMessage("Unable to fetch the user"))
             }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
+        } catch (error: Exception) {
+            Result.Error(error.toUserMessage("Unable to fetch the user"))
         }
-    }
 }

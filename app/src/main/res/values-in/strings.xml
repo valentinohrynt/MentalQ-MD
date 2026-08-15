@@ -18,8 +18,6 @@
     <string name="label_password">Kata Sandi</string>
     <string name="button_login">Masuk</string>
     <string name="button_register">Daftar</string>
-    <string name="text_no_account">Belum punya akun? Daftar</string>
-    <string name="text_have_account">Sudah punya akun? Masuk</string>
     <string name="error_email_empty">Email harus diisi</string>
     <string name="error_email_invalid">Format email salah</string>
     <string name="error_password_empty">Kata sandi harus diisi</string>
@@ -36,17 +34,8 @@
 
     <string name="hello_user">Hai, </string>
     <string name="diary_streak">Streak</string>
-    <string name="day_wed">Rab</string>
     <string name="current_state">Kondisi Saat Ini</string>
-    <string name="state_anxiety">Kecemasan</string>
-    <string name="lorem_ipsum">Lorem ipsum dolor sit amet…</string>
     <string name="latest_diary">Catatan terakhir</string>
-    <string name="feeling_tired">Saya merasa lelah</string>
-    <string name="date_format">17 Februari 2024 | 12:30</string>
-    <string name="cd_profile_picture">Foto profil</string>
-    <string name="cd_home">Beranda</string>
-    <string name="cd_diary">Jurnal</string>
-    <string name="cd_profile">Profil</string>
     <string name="mental_health_matters">Kesehatan mental itu penting!</string>
     <string name="your_note">Catatan Anda</string>
     <string name="your_profile">Profil Anda</string>
@@ -60,8 +49,6 @@
     <string name="terms_of_service">Syarat Layanan</string>
     <string name="logout">Keluar</string>
     <string name="logout_message">Yakin ingin keluar? Anda harus masuk ulang untuk mengakses akun.</string>
-    <string name="note_title">Judul</string>
-    <string name="note_content">Isi</string>
     <string name="happy">Senang</string>
     <string name="anxious">Cemas</string>
     <string name="angry">Marah</string>
@@ -71,7 +58,6 @@
     <string name="streak_notification_content_1">Anda sudah</string>
     <string name="streak_notification_content_2">hari berturut-turut. Catat hari ini.</string>
     <string name="login_failed">Masuk gagal!</string>
-    <string name="register_failed">Pendaftaran gagal, periksa input Anda.</string>
     <string name="login_success">Berhasil masuk!</string>
     <string name="register_success">Pendaftaran berhasil, periksa email untuk verifikasi!</string>
     <string name="delete">Hapus</string>
@@ -94,7 +80,6 @@
     <string name="error_password_uppercase">Kata sandi harus memiliki huruf kapital</string>
     <string name="error_password_digit">Kata sandi harus memiliki angka</string>
     <string name="error_occurred">Terjadi kesalahan</string>
-    <string name="forgot_password_button">Lupa Kata Sandi</string>
     <string name="forgot_password_title">Lupa Kata Sandi</string>
     <string name="forgot_password_subtitle">Masukkan email untuk menerima kode verifikasi</string>
     <string name="send_verification_code">Kirim Kode Verifikasi</string>
@@ -105,7 +90,6 @@
     <string name="new_password_step_title">Atur Ulang Kata Sandi</string>
     <string name="new_password_step_subtitle">Masukkan kata sandi baru</string>
     <string name="new_password">Kata Sandi Baru</string>
-    <string name="confirm_email">Konfirmasi Kata Sandi</string>
     <string name="reset_password">Atur Ulang Kata Sandi</string>
 
     <string name="note_not_sufficient">Catatan kurang lengkap</string>
@@ -120,7 +104,6 @@
 
     <string name="add_more_note">Tambahkan lebih banyak informasi (minimal 7 catatan) untuk penilaian yang akurat.</string>
     <string name="sign_in_with_google">Masuk dengan Google</string>
-    <string name="google_sign_in_failed">Masuk Google gagal</string>
 
     <string name="not_sufficient_data_disclaimer">Analisis belum akurat. Tambahkan minimal 28 catatan.</string>
     <string name="sufficient_data_disclaimer">Analisis sudah akurat.</string>
@@ -133,7 +116,6 @@
     <string name="cannot_add_note">Anda sudah menambahkan catatan untuk hari ini, datang lagi besok!</string>
     <string name="back">Kembali</string>
 
-    <string name="voice_error_no_input">Silakan bicara sekarang. Pastikan mikrofon Anda tidak dalam keadaan bisu</string>
     <string name="voice_error_cant_hear">Tidak dapat mendengar Anda. Silakan bicara lebih keras</string>
     <string name="voice_error_generic">Maaf, terjadi kesalahan. Silakan coba lagi</string>
     <string name="voice_error_timeout">Perekaman dihentikan. Silakan coba lagi</string>
@@ -174,7 +156,5 @@
     <string name="prediction_disclaimer_or">atau</string>
     <string name="prediction_disclaimer_bold_2">mencerminkan kondisi kesehatan mental</string>
     <string name="prediction_disclaimer_consult">. Konsultasikan dengan profesional untuk saran.</string>
-    <string name="not_available">(Tidak Tersedia)</string>
-    <string name="default_web_client_id">1056734232546-9btt30pq6ieiv05gs95o9aoo06ei2nri.apps.googleusercontent.com</string>
     <string name="confirm_password">Ulangi Password Baru Anda!</string>
 </resources>

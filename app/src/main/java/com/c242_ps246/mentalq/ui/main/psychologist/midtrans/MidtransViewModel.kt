@@ -1,31 +1,25 @@
 package com.c242_ps246.mentalq.ui.main.psychologist.midtrans
 
 import androidx.lifecycle.ViewModel
-import com.c242_ps246.mentalq.data.remote.response.PsychologistItem
-import com.c242_ps246.mentalq.data.remote.response.UserData
+import androidx.lifecycle.viewModelScope
 import com.c242_ps246.mentalq.data.repository.MidtransRepository
-import com.c242_ps246.mentalq.data.repository.PsychologistRepository
 import com.c242_ps246.mentalq.data.repository.Result
-import com.c242_ps246.mentalq.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-
 data class MidtransScreenUiState(
-    val isLoading: Boolean = true,
+    val isLoading: Boolean = false,
     val success: Boolean = false,
-    val error: String? = null,
+    val error: String? = null
 )
 
 @HiltViewModel
 class MidtransViewModel @Inject constructor(
-    private val midtransRepository: MidtransRepository,
-    private val psychologistRepository: PsychologistRepository,
-    private val userRepository: UserRepository
+    private val midtransRepository: MidtransRepository
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(MidtransScreenUiState())
     val uiState = _uiState.asStateFlow()
 
@@ -41,112 +35,78 @@ class MidtransViewModel @Inject constructor(
     private val _transactionMessage = MutableStateFlow<String?>(null)
     val transactionMessage = _transactionMessage.asStateFlow()
 
-    private val _psychologistData = MutableStateFlow<PsychologistItem?>(null)
-    val psychologistData = _psychologistData.asStateFlow()
+    private val _chatId = MutableStateFlow<String?>(null)
+    val chatId = _chatId.asStateFlow()
 
-    private val _userData = MutableStateFlow<UserData?>(null)
-    val userData = _userData.asStateFlow()
-
-
-    fun getPsychologistData(psychologistId: String) {
-        psychologistRepository.getPsychologistById(psychologistId).observeForever { result ->
-            when (result) {
-                is Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
+    fun loadPaymentResult(orderId: String) {
+        viewModelScope.launch {
+            setLoading()
+            when (val result = midtransRepository.getTransactionStatus(orderId)) {
+                Result.Loading -> Unit
+                is Result.Error -> setError(result.error)
                 is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                    _psychologistData.value = result.data
-                }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
+                    _transactionStatus.value = result.data.transactionStatus
+                    _transactionMessage.value = result.data.statusMessage
+                    _chatId.value = result.data.chatId
+                    if (result.data.transactionStatus in SUCCESSFUL_STATUSES
+                        && result.data.chatId.isNullOrBlank()
+                    ) {
+                        setError(
+                            result.data.chatError
+                                ?: "Payment is confirmed, but the chat is not ready. Check again."
+                        )
+                    } else {
+                        setSuccess()
+                    }
                 }
             }
         }
     }
 
-    fun getUserDataById(userId: String) {
-        userRepository.getUserDataById(userId).observeForever { result ->
-            when (result) {
-                is Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
+    fun createTransaction(itemId: String) {
+        viewModelScope.launch {
+            setLoading()
+            when (val result = midtransRepository.createTransaction(itemId)) {
+                Result.Loading -> Unit
                 is Result.Success -> {
-                    _userData.value = result.data
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                }
-            }
-        }
-    }
-
-
-    fun createTransaction(price: Int, itemId: String) {
-        midtransRepository.createTransaction(price, itemId).observeForever { result ->
-            when (result) {
-                is Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
-                is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
                     _orderId.value = result.data.orderId
                     _redirectUrl.value = result.data.redirectUrl
+                    setSuccess()
                 }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                }
-            }
-
-        }
-    }
-
-    fun getTransactionStatus(orderId: String) {
-        midtransRepository.getTransactionStatus(orderId).observeForever { result ->
-            when (result) {
-                is Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
-                is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                    _transactionStatus.value = result.data.transactionStatus
-                    _transactionMessage.value = result.data.statusMessage
-
-                    midtransRepository.getTransactionStatus(orderId).removeObserver { this }
-                }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                }
+                is Result.Error -> setError(result.error)
             }
         }
     }
 
-    fun cancelTransaction(orderId: String) {
-        midtransRepository.cancelTransaction(orderId).observeForever { result ->
-            when (result) {
-                is Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
+    fun cancelTransaction(orderId: String, onComplete: () -> Unit) {
+        viewModelScope.launch {
+            setLoading()
+            when (val result = midtransRepository.cancelTransaction(orderId)) {
+                Result.Loading -> Unit
                 is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
                     _transactionStatus.value = result.data.transactionStatus
                     _transactionMessage.value = result.data.statusMessage
+                    setSuccess()
+                    onComplete()
                 }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                }
+                is Result.Error -> setError(result.error)
             }
         }
+    }
+
+    private fun setLoading() {
+        _uiState.value = MidtransScreenUiState(isLoading = true)
+    }
+
+    private fun setSuccess() {
+        _uiState.value = MidtransScreenUiState(success = true)
+    }
+
+    private fun setError(message: String) {
+        _uiState.value = MidtransScreenUiState(error = message)
+    }
+
+    private companion object {
+        val SUCCESSFUL_STATUSES = setOf("settlement", "capture")
     }
 }

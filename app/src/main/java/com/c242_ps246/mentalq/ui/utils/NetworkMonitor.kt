@@ -7,8 +7,8 @@ import android.net.NetworkCapabilities
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,29 +20,37 @@ import androidx.compose.ui.res.stringResource
 import com.c242_ps246.mentalq.R
 import com.c242_ps246.mentalq.ui.component.CustomDialog
 import com.c242_ps246.mentalq.ui.theme.MentalQTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 
 class NetworkMonitor(context: Context) {
     private val connectivityManager =
-        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private val _isConnected = MutableStateFlow(checkNetworkConnection(connectivityManager))
     val isConnected = _isConnected.asStateFlow()
 
-    init {
-        connectivityManager.registerDefaultNetworkCallback(object :
-            ConnectivityManager.NetworkCallback() {
+    private val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                _isConnected.update { true }
+                _isConnected.value = checkNetworkConnection(connectivityManager)
             }
 
             override fun onLost(network: Network) {
-                _isConnected.update { false }
+                _isConnected.value = checkNetworkConnection(connectivityManager)
             }
-        })
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                _isConnected.value = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        }
+
+    init {
+        connectivityManager.registerDefaultNetworkCallback(callback)
     }
+
+    fun close() = runCatching { connectivityManager.unregisterNetworkCallback(callback) }.getOrNull()
 
     private fun checkNetworkConnection(connectivityManager: ConnectivityManager): Boolean {
         val network = connectivityManager.activeNetwork ?: return false
@@ -57,12 +65,16 @@ fun NetworkAwareContent(
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val networkMonitor = remember { NetworkMonitor(context) }
-    val isConnected by networkMonitor.isConnected.collectAsState()
+    val networkMonitor = remember(context.applicationContext) { NetworkMonitor(context) }
+    val isConnected by networkMonitor.isConnected.collectAsStateWithLifecycle()
     var showOfflineDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(isConnected) {
         showOfflineDialog = !isConnected
+    }
+
+    DisposableEffect(networkMonitor) {
+        onDispose(networkMonitor::close)
     }
 
     if (isConnected) {

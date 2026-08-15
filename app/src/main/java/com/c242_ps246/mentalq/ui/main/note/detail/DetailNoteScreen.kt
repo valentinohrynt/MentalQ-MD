@@ -68,6 +68,9 @@ fun DetailNoteScreen(
     val selectedEmotion: String by viewModel.emotion.collectAsStateWithLifecycle()
     var isSaveTriggered by remember { mutableStateOf(false) }
     val voiceToTextParser = remember { VoiceToTextParser(application) }
+    DisposableEffect(voiceToTextParser) {
+        onDispose(voiceToTextParser::destroy)
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
 
     fun handleBack() {
@@ -239,7 +242,7 @@ fun DetailNoteScreen(
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    items(emotionList.size) { index ->
+                    items(emotionList.size, key = { emotionList[it] }) { index ->
                         Spacer(modifier = Modifier.width(8.dp))
                         EmotionButton(
                             emotion = emotionList[index],

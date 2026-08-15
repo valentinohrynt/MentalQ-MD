@@ -26,8 +26,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,11 +49,11 @@ import java.util.Locale
 @Composable
 fun PsychologistScreen(
     onBackClick: () -> Unit,
-    onNavigateToMidtransWebView: (String, Int, String) -> Unit,
+    onNavigateToMidtransWebView: (String, String) -> Unit,
     viewModel: PsychologistViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val psychologistList by viewModel.psychologists.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val psychologistList by viewModel.psychologists.collectAsStateWithLifecycle()
     val userId by viewModel.userId.collectAsStateWithLifecycle()
 
     BackHandler {
@@ -77,7 +77,7 @@ fun PsychologistScreen(
                 )
             } else {
 
-                if (psychologistList.isNullOrEmpty()) {
+                if (psychologistList.isEmpty()) {
                     EmptyState(
                         title = stringResource(id = R.string.no_psychologist_found),
                         subtitle = stringResource(id = R.string.no_psychologist_found_subtitle),
@@ -88,14 +88,16 @@ fun PsychologistScreen(
                         contentPadding = PaddingValues(vertical = 8.dp, horizontal = 8.dp)
                     ) {
                         items(
-                            items = psychologistList!!,
+                            items = psychologistList,
                             key = { it.id }
                         ) { psychologist ->
-                            PsychologistCard(
-                                psychologist = psychologist,
-                                userId = userId!!,
-                                onNavigateToMidtransWebView = onNavigateToMidtransWebView
-                            )
+                            userId?.let { currentUserId ->
+                                PsychologistCard(
+                                    psychologist = psychologist,
+                                    userId = currentUserId,
+                                    onNavigateToMidtransWebView = onNavigateToMidtransWebView
+                                )
+                            }
                         }
                     }
                 }
@@ -109,13 +111,13 @@ private fun PsychologistCard(
     psychologist: PsychologistItem,
     modifier: Modifier = Modifier,
     userId: String,
-    onNavigateToMidtransWebView: (String, Int, String) -> Unit
+    onNavigateToMidtransWebView: (String, String) -> Unit
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = {
-                onNavigateToMidtransWebView(userId, psychologist.price, psychologist.userId)
+                onNavigateToMidtransWebView(userId, psychologist.userId)
             }),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -156,8 +158,9 @@ private fun PsychologistCard(
 
                     Spacer(modifier = Modifier.size(16.dp))
 
-                    val locale = Locale("id", "ID")
-                    val formatter = NumberFormat.getCurrencyInstance(locale)
+                    val formatter = remember {
+                        NumberFormat.getCurrencyInstance(Locale.forLanguageTag("id-ID"))
+                    }
 
                     Column {
                         Text(

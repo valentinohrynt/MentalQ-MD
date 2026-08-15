@@ -1,247 +1,155 @@
 package com.c242_ps246.mentalq.ui.main.chat
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.c242_ps246.mentalq.data.remote.response.ChatRoomItem
 import com.c242_ps246.mentalq.data.repository.AuthRepository
-import com.google.firebase.Firebase
+import com.c242_ps246.mentalq.data.manager.FirebaseServiceProvider
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.ValueEventListener
-import com.google.firebase.database.database
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    authRepository: AuthRepository,
+    private val firebaseServices: FirebaseServiceProvider
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(ChatListUiState())
+    private val _uiState = MutableStateFlow(ChatListUiState(isLoading = true))
     val uiState = _uiState.asStateFlow()
 
     private val _chatRooms = MutableStateFlow<List<ChatRoomItem>>(emptyList())
     val chatRooms = _chatRooms.asStateFlow()
 
-    private val _userId = MutableStateFlow<String?>(null)
-    val userId = _userId.asStateFlow()
+    val userId = authRepository.getUserId()
+        .map { it.ifBlank { null } }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
-    private val firebase = Firebase.database
+    private val roomsById = mutableMapOf<String, ChatRoomItem>()
+    private var userChatsRegistration: ListenerRegistration? = null
+    private val roomRegistrations = mutableMapOf<String, ListenerRegistration>()
 
     init {
-        loadChatRooms()
-        getUserId()
-    }
-
-    private fun getUserId() {
-        authRepository.getUserId().observeForever {
-            _userId.value = it
-
-            if (it != null) {
-                _uiState.value =
-                    _uiState.value.copy(isLoading = false)
-            }
-
-            authRepository.getUserId().removeObserver { this }
+        viewModelScope.launch {
+            userId.collect(::observeUserChats)
         }
     }
 
+    private fun observeUserChats(currentUserId: String?) {
+        detachAllListeners()
+        roomsById.clear()
+        _chatRooms.value = emptyList()
 
-    private fun loadChatRooms() {
-        authRepository.getUserId().observeForever { userId ->
-            _uiState.value = _uiState.value.copy(isLoading = true)
-            try {
-
-                val userChatsRef = firebase.getReference("userChats").child(userId)
-
-                userChatsRef.addValueEventListener(object : ValueEventListener {
-                    override fun onDataChange(snapshot: DataSnapshot) {
-
-                        if (snapshot.exists()) {
-                            val chatRooms = mutableListOf<ChatRoomItem>()
-                            val chatRoomsMap = mutableMapOf<String, ChatRoomItem>()
-                            val userChats = snapshot.children
-                            var remainingRequests = userChats.count()
-
-                            snapshot.children.forEach { chatRoomSnapshot ->
-
-                                val chatRoomId = chatRoomSnapshot.value.toString()
-
-                                val chatRoomRef =
-                                    firebase.getReference("chatroom").child(chatRoomId)
-
-                                chatRoomRef.get().addOnSuccessListener { chatRoomData ->
-                                    if (chatRoomData.exists()) {
-
-                                        val chatRoom = ChatRoomItem(
-                                            id = chatRoomData.key.toString(),
-                                            userId = chatRoomData.child("members")
-                                                .child("user").child("id")
-                                                .value.toString(),
-                                            userName = chatRoomData.child("members")
-                                                .child("user").child("name")
-                                                .value.toString(),
-                                            userProfile = chatRoomData.child("members")
-                                                .child("user").child("profile")
-                                                .value.toString(),
-                                            psychologistName = chatRoomData.child("members")
-                                                .child("psychologist").child("name")
-                                                .value.toString(),
-                                            psychologistPrefix = chatRoomData.child("members")
-                                                .child("psychologist").child("prefix")
-                                                .value.toString(),
-                                            psychologistSuffix = chatRoomData.child("members")
-                                                .child("psychologist")
-                                                .child("suffix").value.toString(),
-                                            psychologistProfile = chatRoomData.child("members")
-                                                .child("psychologist")
-                                                .child("profile").value.toString(),
-                                            lastMessage = chatRoomData.child("lastMessage").value.toString(),
-                                            lastMessageSenderId = chatRoomData.child("lastMessageSenderId").value.toString(),
-                                            psychologistId = chatRoomData.child("psychologistId").value.toString(),
-                                            createdAt = chatRoomData.child("createdAt").value.toString(),
-                                            updatedAt = chatRoomData.child("updatedAt").value.toString()
-                                        )
-
-                                        chatRoomsMap[chatRoom.id] = chatRoom
-
-                                        chatRooms.clear()
-                                        chatRooms.addAll(chatRoomsMap.values)
-
-                                        chatRoomRef.child("lastMessage")
-                                            .addValueEventListener(object : ValueEventListener {
-                                                override fun onDataChange(lastMessageSnapshot: DataSnapshot) {
-                                                    if (lastMessageSnapshot.exists()) {
-                                                        val updatedLastMessage =
-                                                            lastMessageSnapshot.value.toString()
-
-                                                        val updatedChatRoom =
-                                                            chatRoomsMap[chatRoom.id]?.copy(
-                                                                lastMessage = updatedLastMessage
-                                                            )
-
-                                                        if (updatedChatRoom != null) {
-                                                            chatRoomsMap[chatRoom.id] =
-                                                                updatedChatRoom
-                                                            chatRooms.clear()
-                                                            chatRooms.addAll(chatRoomsMap.values)
-                                                            _chatRooms.value =
-                                                                chatRooms.sortedByDescending { it.updatedAt }
-                                                        }
-                                                    }
-                                                }
-
-                                                override fun onCancelled(error: DatabaseError) {
-                                                }
-
-                                            })
-
-                                        chatRoomRef.child("updatedAt")
-                                            .addValueEventListener(object : ValueEventListener {
-                                                override fun onDataChange(updatedAtSnapshot: DataSnapshot) {
-                                                    if (updatedAtSnapshot.exists()) {
-                                                        val updatedUpdatedAt =
-                                                            updatedAtSnapshot.value.toString()
-
-                                                        val updatedChatRoom =
-                                                            chatRoomsMap[chatRoom.id]?.copy(
-                                                                updatedAt = updatedUpdatedAt
-                                                            )
-
-                                                        if (updatedChatRoom != null) {
-                                                            chatRoomsMap[chatRoom.id] =
-                                                                updatedChatRoom
-                                                            chatRooms.clear()
-                                                            chatRooms.addAll(chatRoomsMap.values)
-                                                            _chatRooms.value =
-                                                                chatRooms.sortedByDescending { it.updatedAt }
-                                                        }
-                                                    }
-                                                }
-
-                                                override fun onCancelled(error: DatabaseError) {
-                                                }
-
-                                            })
-
-                                        chatRoomRef.child("lastMessageSenderId")
-                                            .addValueEventListener(object : ValueEventListener {
-                                                override fun onDataChange(
-                                                    lastMessageSenderIdSnapshot: DataSnapshot
-                                                ) {
-                                                    if (lastMessageSenderIdSnapshot.exists()) {
-                                                        val updatedLastMessageSenderId =
-                                                            lastMessageSenderIdSnapshot.value.toString()
-
-                                                        val updatedChatRoom =
-                                                            chatRoomsMap[chatRoom.id]?.copy(
-                                                                lastMessageSenderId = updatedLastMessageSenderId
-                                                            )
-
-                                                        if (updatedChatRoom != null) {
-                                                            chatRoomsMap[chatRoom.id] =
-                                                                updatedChatRoom
-                                                            chatRooms.clear()
-                                                            chatRooms.addAll(chatRoomsMap.values)
-                                                            _chatRooms.value =
-                                                                chatRooms.sortedByDescending { it.updatedAt }
-                                                        }
-                                                    }
-                                                }
-
-                                                override fun onCancelled(error: DatabaseError) {
-                                                }
-
-                                            })
-
-
-                                    } else {
-                                        _uiState.value = _uiState.value.copy(isLoading = false)
-
-                                    }
-
-                                    remainingRequests--
-                                    if (remainingRequests == 0) {
-                                        _chatRooms.value =
-                                            chatRooms.sortedByDescending { it.updatedAt }
-                                        _uiState.value = _uiState.value.copy(isLoading = false)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    override fun onCancelled(error: DatabaseError) {
-
-                    }
-                })
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    error = e.message,
-                    isLoading = false
-                )
-            }
+        if (currentUserId == null) {
+            _uiState.value = ChatListUiState(error = "No signed-in user")
+            return
         }
 
+        _uiState.value = ChatListUiState(isLoading = true)
+        val database = firebaseServices.database()
+        if (database == null) {
+            _uiState.value = ChatListUiState(error = FirebaseServiceProvider.CONFIGURATION_ERROR)
+            return
+        }
+        val reference = database.getReference("userChats").child(currentUserId)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val roomIds = snapshot.children
+                    .mapNotNull { it.value?.toString()?.takeIf(String::isNotBlank) }
+                    .toSet()
+                synchronizeRoomListeners(roomIds)
+                _uiState.value = ChatListUiState(isLoading = false)
+            }
 
+            override fun onCancelled(error: DatabaseError) {
+                _uiState.value = ChatListUiState(error = error.message)
+            }
+        }
+        reference.addValueEventListener(listener)
+        userChatsRegistration = ListenerRegistration(reference, listener)
     }
 
-//    private fun loadChatRooms() {
-//        viewModelScope.launch {
-//            _uiState.update { it.copy(isLoading = true) }
-//            try {
-//                _chatPreviews.value = chatRepository.getChatPreviews()
-//                _uiState.update { it.copy(isLoading = false) }
-//            } catch (e: Exception) {
-//                _uiState.update {
-//                    it.copy(
-//                        error = e.message,
-//                        isLoading = false
-//                    )
-//                }
-//            }
-//        }
-//    }
+    private fun synchronizeRoomListeners(roomIds: Set<String>) {
+        (roomRegistrations.keys - roomIds).forEach { roomId ->
+            roomRegistrations.remove(roomId)?.detach()
+            roomsById.remove(roomId)
+        }
+        (roomIds - roomRegistrations.keys).forEach(::observeRoom)
+        publishRooms()
+    }
+
+    private fun observeRoom(roomId: String) {
+        val database = firebaseServices.database() ?: return
+        val reference = database.getReference("chatroom").child(roomId)
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (snapshot.exists()) {
+                    roomsById[roomId] = snapshot.toChatRoom(roomId)
+                } else {
+                    roomsById.remove(roomId)
+                }
+                publishRooms()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                _uiState.value = ChatListUiState(error = error.message)
+            }
+        }
+        reference.addValueEventListener(listener)
+        roomRegistrations[roomId] = ListenerRegistration(reference, listener)
+    }
+
+    private fun publishRooms() {
+        _chatRooms.value = roomsById.values.sortedByDescending { it.updatedAt.toLongOrNull() ?: 0L }
+    }
+
+    private fun DataSnapshot.toChatRoom(roomId: String) = ChatRoomItem(
+        id = roomId,
+        userId = child("members/user/id").stringValue(),
+        userName = child("members/user/name").stringValue(),
+        userProfile = child("members/user/profile").nullableStringValue(),
+        psychologistId = child("psychologistId").stringValue(),
+        psychologistName = child("members/psychologist/name").stringValue(),
+        psychologistPrefix = child("members/psychologist/prefix").nullableStringValue(),
+        psychologistSuffix = child("members/psychologist/suffix").nullableStringValue(),
+        psychologistProfile = child("members/psychologist/profile").nullableStringValue(),
+        lastMessage = child("lastMessage").nullableStringValue(),
+        lastMessageSenderId = child("lastMessageSenderId").nullableStringValue(),
+        createdAt = child("createdAt").stringValue(),
+        updatedAt = child("updatedAt").stringValue()
+    )
+
+    private fun DataSnapshot.stringValue(): String = value?.toString().orEmpty()
+
+    private fun DataSnapshot.nullableStringValue(): String? =
+        value?.toString()?.takeUnless { it == "null" || it.isBlank() }
+
+    private fun detachAllListeners() {
+        userChatsRegistration?.detach()
+        userChatsRegistration = null
+        roomRegistrations.values.forEach(ListenerRegistration::detach)
+        roomRegistrations.clear()
+    }
+
+    override fun onCleared() {
+        detachAllListeners()
+        super.onCleared()
+    }
+
+    private data class ListenerRegistration(
+        val reference: DatabaseReference,
+        val listener: ValueEventListener
+    ) {
+        fun detach() = reference.removeEventListener(listener)
+    }
 }
 
 data class ChatListUiState(

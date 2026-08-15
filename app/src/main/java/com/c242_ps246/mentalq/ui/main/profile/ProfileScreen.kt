@@ -30,11 +30,10 @@ import androidx.compose.material3.*
 import androidx.compose.material3.DatePickerDefaults.dateFormatter
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,12 +63,11 @@ import com.c242_ps246.mentalq.ui.component.CustomDialog
 import com.c242_ps246.mentalq.ui.component.TermsWebView
 import com.c242_ps246.mentalq.ui.notification.dailyreminder.DailyReminderNotificationHelper
 import com.c242_ps246.mentalq.ui.notification.streak.StreakNotificationHelper
-import com.c242_ps246.mentalq.ui.utils.Utils.compressImageSize
 import com.c242_ps246.mentalq.ui.utils.Utils.formatDate
-import com.c242_ps246.mentalq.ui.utils.Utils.uriToFile
+import com.c242_ps246.mentalq.ui.utils.Utils.prepareProfileImage
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -84,10 +82,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
     val notificationsEnabled by viewModel.notificationsEnabled.collectAsStateWithLifecycle()
     var showConfirmDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
-
-    LaunchedEffect(Unit) {
-        viewModel.getUserData()
-    }
 
     Scaffold(
         topBar = {
@@ -117,8 +111,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                             userData = userData,
                             onLogout = {
                                 if (!uiState.isLoading) {
-                                    viewModel.logout()
-                                    onLogout()
+                                    viewModel.logout(onComplete = onLogout)
                                 }
                             },
                             viewModel = viewModel
@@ -129,12 +122,9 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         PreferencesSection(
                             notificationsEnabled = notificationsEnabled,
                             onNotificationChange = { isEnabled ->
-                                val streakNotificationHelper = StreakNotificationHelper(context)
-                                streakNotificationHelper.createNotificationChannel()
-                                viewModel.setNotificationsEnabled(isEnabled, context)
+                                viewModel.setNotificationsEnabled(isEnabled)
                             },
                             onShowLogoutDialog = { showConfirmDialog = true },
-                            viewModel = viewModel
                         )
                     }
 
@@ -142,8 +132,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         if (showConfirmDialog) {
                             LogoutDialog(
                                 onConfirm = {
-                                    viewModel.logout()
-                                    onLogout()
+                                    viewModel.logout(onComplete = onLogout)
                                     showConfirmDialog = false
                                 },
                                 onDismiss = { showConfirmDialog = false }
@@ -207,7 +196,8 @@ private fun ProfileInfo(
 ) {
     var showEditDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     Box(
         modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.TopCenter
@@ -238,26 +228,20 @@ private fun ProfileInfo(
                 userData = userData,
                 onDismiss = { showEditDialog = false },
                 onSave = { name, email, birthday, imageUri ->
-                    val nameRequestBody = RequestBody.create("text/plain".toMediaTypeOrNull(), name)
-                    val emailRequestBody =
-                        RequestBody.create("text/plain".toMediaTypeOrNull(), email)
-                    val birthdayRequestBody =
-                        RequestBody.create("text/plain".toMediaTypeOrNull(), birthday)
-                    val profileImagePart = imageUri?.let {
-                        val file = uriToFile(it, context)
-                        val fileCompressed = file.compressImageSize()
-                        val requestFile =
-                            RequestBody.create("image/jpeg".toMediaTypeOrNull(), fileCompressed)
-                        MultipartBody.Part.createFormData("profileImage", file.name, requestFile)
-                    }
-                    viewModel.updateProfile(
-                        nameRequestBody,
-                        emailRequestBody,
-                        birthdayRequestBody,
-                        profileImagePart
-                    )
-                    if (email != userData?.email) {
-                        onLogout()
+                    scope.launch {
+                        val nameRequestBody = RequestBody.create("text/plain".toMediaTypeOrNull(), name)
+                        val emailRequestBody = RequestBody.create("text/plain".toMediaTypeOrNull(), email)
+                        val birthdayRequestBody = RequestBody.create("text/plain".toMediaTypeOrNull(), birthday)
+                        val profileImagePart = imageUri?.let { prepareProfileImage(it, context) }
+                        viewModel.updateProfile(
+                            nameRequestBody,
+                            emailRequestBody,
+                            birthdayRequestBody,
+                            profileImagePart,
+                            onSuccess = {
+                                if (email != userData?.email) onLogout()
+                            }
+                        )
                     }
                 }
             )
@@ -611,8 +595,7 @@ private fun UserDetailInfo(userData: UserData?) {
 fun PreferencesSection(
     notificationsEnabled: Boolean,
     onNotificationChange: (Boolean) -> Unit,
-    onShowLogoutDialog: () -> Unit,
-    viewModel: ProfileViewModel
+    onShowLogoutDialog: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -629,7 +612,6 @@ fun PreferencesSection(
                 onNotificationChange(true)
                 streakNotificationHelper.createNotificationChannel()
                 dailyReminderNotificationHelper.createNotificationChannel()
-                viewModel.setNotificationsEnabled(true, context)
             } else {
                 if (activity != null && ActivityCompat.shouldShowRequestPermissionRationale(
                         activity, Manifest.permission.POST_NOTIFICATIONS
@@ -640,7 +622,6 @@ fun PreferencesSection(
                     showSettingsDialog = true
                 }
                 onNotificationChange(false)
-                viewModel.setNotificationsEnabled(false, context)
             }
         }
     )
@@ -679,8 +660,8 @@ fun PreferencesSection(
     var showTermsDialog by remember { mutableStateOf(false) }
     var showPrivacyAndPolicyDialog by remember { mutableStateOf(false) }
     val baseUrl = BuildConfig.BASE_URL
-    val termsUrl = "$baseUrl/terms-of-service"
-    val privacyPolicyUrl = "$baseUrl/privacy-policy"
+    val termsUrl = "${baseUrl.trimEnd('/')}/terms-of-service"
+    val privacyPolicyUrl = "${baseUrl.trimEnd('/')}/privacy-policy"
     Text(
         text = stringResource(id = R.string.preferences),
         style = TextStyle(
@@ -721,7 +702,6 @@ fun PreferencesSection(
                                     onNotificationChange(true)
                                     streakNotificationHelper.createNotificationChannel()
                                     dailyReminderNotificationHelper.createNotificationChannel()
-                                    viewModel.setNotificationsEnabled(true, context)
                                 }
 
                                 else -> {
@@ -732,11 +712,9 @@ fun PreferencesSection(
                             onNotificationChange(true)
                             streakNotificationHelper.createNotificationChannel()
                             dailyReminderNotificationHelper.createNotificationChannel()
-                            viewModel.setNotificationsEnabled(true, context)
                         }
                     } else {
                         onNotificationChange(false)
-                        viewModel.setNotificationsEnabled(false, context)
                     }
                 }
             )

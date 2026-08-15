@@ -3,15 +3,15 @@ package com.c242_ps246.mentalq.ui.notification.streak
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingWorkPolicy
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.c242_ps246.mentalq.data.manager.MentalQAppPreferences
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.withContext
+import com.c242_ps246.mentalq.ui.notification.dailyreminder.DailyReminderWorkerEntryPoint
+import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.flow.first
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -25,9 +25,14 @@ class StreakWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            val streakInfo = getStreakInfo(applicationContext).firstOrNull()
+            val preferences = EntryPointAccessors.fromApplication(
+                applicationContext,
+                DailyReminderWorkerEntryPoint::class.java
+            ).preferences()
+            if (!preferences.getNotificationsState().first()) return Result.success()
+            val streakInfo = preferences.getStreakInfo().first()
 
-            streakInfo?.let { (lastEntryDate, streakCount) ->
+            streakInfo.let { (lastEntryDate, streakCount) ->
                 val today = LocalDate.now()
                 val formatter = DateTimeFormatter.ISO_LOCAL_DATE
 
@@ -38,22 +43,15 @@ class StreakWorker(
                     }
                 }
             }
-            scheduleNextNotification(applicationContext)
-
             Result.success()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure()
+        } catch (_: Exception) {
+            Result.retry()
         }
     }
 
     private fun showNotification(streakCount: Int) {
         val streakNotificationHelper = StreakNotificationHelper(applicationContext)
         streakNotificationHelper.showStreakNotification(streakCount)
-    }
-
-    private suspend fun getStreakInfo(context: Context) = withContext(Dispatchers.IO) {
-        MentalQAppPreferences(context).getStreakInfo()
     }
 
     companion object {
@@ -71,15 +69,15 @@ class StreakWorker(
                 .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
                 .build()
 
-            val dailyWorkRequest = OneTimeWorkRequestBuilder<StreakWorker>()
+            val dailyWorkRequest = PeriodicWorkRequestBuilder<StreakWorker>(24, TimeUnit.HOURS)
                 .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
                 .setConstraints(constraints)
                 .build()
 
             WorkManager.getInstance(context)
-                .enqueueUniqueWork(
+                .enqueueUniquePeriodicWork(
                     StreakNotificationHelper.WORK_NAME,
-                    ExistingWorkPolicy.KEEP,
+                    ExistingPeriodicWorkPolicy.UPDATE,
                     dailyWorkRequest
                 )
         }

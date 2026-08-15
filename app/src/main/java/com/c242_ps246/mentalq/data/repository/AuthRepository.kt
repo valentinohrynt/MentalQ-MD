@@ -1,257 +1,180 @@
 package com.c242_ps246.mentalq.data.repository
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.asLiveData
-import androidx.lifecycle.liveData
 import com.c242_ps246.mentalq.data.local.room.AnalysisDao
 import com.c242_ps246.mentalq.data.local.room.NoteDao
 import com.c242_ps246.mentalq.data.local.room.UserDao
+import com.c242_ps246.mentalq.data.local.room.toEntity
+import com.c242_ps246.mentalq.data.local.room.toModel
 import com.c242_ps246.mentalq.data.manager.MentalQAppPreferences
+import com.c242_ps246.mentalq.data.manager.FirebaseServiceProvider
 import com.c242_ps246.mentalq.data.remote.response.AuthResponse
 import com.c242_ps246.mentalq.data.remote.response.RegisterResponse
 import com.c242_ps246.mentalq.data.remote.response.UserData
 import com.c242_ps246.mentalq.data.remote.retrofit.AuthApiService
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import com.c242_ps246.mentalq.data.remote.retrofit.UserApiService
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.tasks.await
+import retrofit2.Response
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class AuthRepository(
+@Singleton
+class AuthRepository @Inject constructor(
     private val authApiService: AuthApiService,
     private val userDao: UserDao,
     private val noteDao: NoteDao,
     private val analysisDao: AnalysisDao,
-    private val preferencesManager: MentalQAppPreferences
+    private val preferences: MentalQAppPreferences,
+    private val firebaseServices: FirebaseServiceProvider,
+    private val userApiService: UserApiService
 ) {
-    fun login(
-        email: String,
-        password: String
-    ): LiveData<Result<AuthResponse>> = liveData {
-        emit(Result.Loading)
-        try {
-            val response = authApiService.login(email, password)
+    suspend fun login(email: String, password: String): Result<AuthResponse> =
+        authenticate { authApiService.login(email, password) }
 
-            if (response.isSuccessful) {
-                val body = response.body()
-                if (body != null && body.error == false) {
-                    val role = body.user?.role
-                    val userId = body.user?.id
+    suspend fun googleLogin(firebaseToken: String): Result<AuthResponse> =
+        authenticate { authApiService.googleLogin(firebaseToken) }
 
-                    if (role.isNullOrEmpty()) {
-                        emit(Result.Error("No user role found"))
-                        return@liveData
-                    }
-
-                    if (userId.isNullOrEmpty()) {
-                        emit(Result.Error("No user id found"))
-                        return@liveData
-                    }
-
-                    withContext(Dispatchers.IO) {
-                        body.token?.let { token ->
-                            preferencesManager.saveToken(token)
-                            val savedToken = preferencesManager.getToken().first()
-                            if (savedToken.isEmpty()) throw Exception("Token failed to save")
-                        }
-                        preferencesManager.saveUserRole(role)
-                        val savedRole = preferencesManager.getUserRole().first()
-                        if (savedRole.isEmpty()) throw Exception("User role failed to save")
-
-                        preferencesManager.saveUserId(userId)
-                        val savedUserId = preferencesManager.getUserId().first()
-                        if (savedUserId.isEmpty()) throw Exception("User id failed to save")
-                    }
-                    userDao.clearUserData()
-                    userDao.insertUser(body.user)
-                    emit(Result.Success(body))
-                } else {
-                    emit(Result.Error(body?.message ?: "Unknown error occurred"))
-                }
-            } else {
-                val errorBody = response.errorBody()?.string()
-                val errorMessage = if (errorBody != null) {
-                    JSONObject(errorBody).getString("message")
-                } else {
-                    "Unknown error occurred"
-                }
-                emit(Result.Error(errorMessage))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
-        }
-    }
-
-    fun googleLogin(
-        firebaseToken: String
-    ): LiveData<Result<AuthResponse>> = liveData {
-        emit(Result.Loading)
-        try {
-            val response = authApiService.googleLogin(firebaseToken)
-
-            if (response.isSuccessful) {
-                val body = response.body()
-                if (body != null && body.error == false) {
-                    val role = body.user?.role
-                    val userId = body.user?.id
-                    if (role.isNullOrEmpty()) {
-                        emit(Result.Error("No user role found"))
-                        return@liveData
-                    }
-
-                    if (userId.isNullOrEmpty()) {
-                        emit(Result.Error("No user id found"))
-                        return@liveData
-                    }
-
-                    withContext(Dispatchers.IO) {
-                        body.token?.let { token ->
-                            preferencesManager.saveToken(token)
-                            val savedToken = preferencesManager.getToken().first()
-                            if (savedToken.isEmpty()) {
-                                throw Exception("Token failed to save")
-                            }
-                        }
-                        preferencesManager.saveUserRole(role)
-                        val savedRole = preferencesManager.getUserRole().first()
-                        if (savedRole.isEmpty()) {
-                            throw Exception("User role failed to save")
-                        }
-
-                        preferencesManager.saveUserId(userId)
-                        val savedUserId = preferencesManager.getUserId().first()
-                        if (savedUserId.isEmpty()) throw Exception("User id failed to save")
-                    }
-                    userDao.clearUserData()
-                    body.user.let { userDao.insertUser(it) }
-
-                    emit(Result.Success(body))
-                } else {
-                    emit(Result.Error(body?.message ?: "Unknown error occurred"))
-                }
-            } else {
-                val errorBody = response.errorBody()?.string()
-                val errorMessage = if (errorBody != null) {
-                    JSONObject(errorBody).getString("message")
-                } else {
-                    "Unknown error occurred"
-                }
-                emit(Result.Error(errorMessage))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
-        }
-    }
-
-    fun register(
+    suspend fun register(
         name: String,
         email: String,
         password: String,
         birthday: String
-    ): LiveData<Result<RegisterResponse>> = liveData {
-        emit(Result.Loading)
-        try {
-            val response = authApiService.register(name, email, password, birthday)
-            if (response.isSuccessful) {
-                val body = response.body()
-                if (body != null && body.error == false) {
-                    emit(Result.Success(body))
-                } else {
-                    emit(Result.Error(body?.message ?: "Unknown error occurred"))
+    ): Result<RegisterResponse> = try {
+        val response = authApiService.register(name, email, password, birthday)
+        val body = response.body()
+        when {
+            !response.isSuccessful -> Result.Error(response.errorMessage("Registration failed"))
+            body == null -> Result.Error("Registration returned an empty response")
+            body.error == true -> Result.Error(body.message ?: "Registration failed")
+            else -> Result.Success(body)
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Registration failed"))
+    }
+
+    suspend fun logout(): Result<Unit> = try {
+        preferences.saveToken("")
+        preferences.saveUserRole("")
+        preferences.saveUserId("")
+        preferences.saveStreakInfo("", 0)
+        preferences.setNotificationsEnabled(false)
+        userDao.clearUserData()
+        noteDao.clearAllNotes()
+        analysisDao.clearAllAnalysis()
+        firebaseServices.auth()?.signOut()
+        Result.Success(Unit)
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Logout failed"))
+    }
+
+    fun getToken(): Flow<String> = preferences.getToken()
+
+    fun getUserId(): Flow<String> = preferences.getUserId()
+
+    fun getUserRole(): Flow<String> = preferences.getUserRole()
+
+    suspend fun ensureFirebaseSession(): Result<Unit> {
+        val firebaseAuth = firebaseServices.auth()
+            ?: return Result.Error(FirebaseServiceProvider.CONFIGURATION_ERROR)
+        if (firebaseAuth.currentUser != null) return Result.Success(Unit)
+
+        return try {
+            val response = userApiService.createFirebaseToken()
+            val body = response.body()
+            val customToken = body?.firebaseCustomToken?.takeIf(String::isNotBlank)
+            when {
+                !response.isSuccessful -> Result.Error(response.errorMessage("Unable to restore chat access"))
+                body?.error == true -> Result.Error(body.message ?: "Unable to restore chat access")
+                customToken == null -> Result.Error("No Firebase session token was returned")
+                else -> {
+                    firebaseAuth.signInWithCustomToken(customToken).await()
+                    Result.Success(Unit)
                 }
-            } else {
-                val errorBody = response.errorBody()?.string()
-                val errorMessage = if (errorBody != null) {
-                    JSONObject(errorBody).getString("message")
-                } else {
-                    "Unknown error occurred"
-                }
-                emit(Result.Error(errorMessage))
             }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
+        } catch (error: Exception) {
+            Result.Error(error.toUserMessage("Unable to restore chat access"))
         }
     }
 
-    suspend fun logout() = runCatching {
-        withContext(Dispatchers.IO) {
-            preferencesManager.saveToken("")
-            preferencesManager.saveUserRole("")
-            preferencesManager.saveStreakInfo("", 0)
-            userDao.clearUserData()
-            noteDao.clearAllNotes()
-            analysisDao.clearAllAnalysis()
+    suspend fun getUser(): Result<UserData> = try {
+        userDao.getUserData()?.toModel()?.let { Result.Success(it) } ?: Result.Error("User not found")
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to load the user"))
+    }
+
+    suspend fun requestResetPassword(email: String): Result<Unit> = try {
+        val response = authApiService.requestResetPassword(email)
+        val body = response.body()
+        if (response.isSuccessful && body?.error != true) {
+            Result.Success(Unit)
+        } else {
+            Result.Error(body?.message ?: response.errorMessage("Unable to request a password reset"))
         }
-    }.fold(
-        onSuccess = { Result.Success(Unit) },
-        onFailure = { Result.Error("Logout failed: ${it.message}") }
-    )
-
-    fun getToken(): LiveData<String> {
-        return preferencesManager.getToken().asLiveData()
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to request a password reset"))
     }
 
-    fun getUserId(): LiveData<String> {
-        return preferencesManager.getUserId().asLiveData()
+    suspend fun verifyOTP(email: String, otp: String): Result<Unit> = try {
+        val response = authApiService.verifyOTP(email, otp)
+        val body = response.body()
+        if (response.isSuccessful && body?.error != true) {
+            Result.Success(Unit)
+        } else {
+            Result.Error(body?.message ?: response.errorMessage("Invalid verification code"))
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to verify the code"))
     }
 
-    fun getUser(): LiveData<Result<UserData>> = liveData {
-        emit(Result.Loading)
+    suspend fun resetPassword(email: String, otp: String, password: String): Result<Unit> = try {
+        val response = authApiService.resetPassword(email, otp, password)
+        val body = response.body()
+        if (response.isSuccessful && body?.error != true) {
+            Result.Success(Unit)
+        } else {
+            Result.Error(body?.message ?: response.errorMessage("Unable to reset the password"))
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to reset the password"))
+    }
+
+    private suspend fun authenticate(
+        request: suspend () -> Response<AuthResponse>
+    ): Result<AuthResponse> = try {
+        val response = request()
+        val body = response.body()
+        when {
+            !response.isSuccessful -> Result.Error(response.errorMessage("Authentication failed"))
+            body == null -> Result.Error("Authentication returned an empty response")
+            body.error == true -> Result.Error(body.message ?: "Authentication failed")
+            else -> persistSession(body)
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Authentication failed"))
+    }
+
+    private suspend fun persistSession(response: AuthResponse): Result<AuthResponse> {
+        val user = response.user ?: return Result.Error("No user information was returned")
+        val token = response.token?.takeIf(String::isNotBlank)
+            ?: return Result.Error("No authentication token was returned")
+        val role = user.role?.takeIf(String::isNotBlank)
+            ?: return Result.Error("No user role was returned")
+        val firebaseCustomToken = response.firebaseCustomToken?.takeIf(String::isNotBlank)
+            ?: return Result.Error("No Firebase session token was returned")
+        val firebaseAuth = firebaseServices.auth()
+            ?: return Result.Error(FirebaseServiceProvider.CONFIGURATION_ERROR)
+
         try {
-            val user = userDao.getUserData()
-            if (user != null) {
-                emit(Result.Success(user))
-            } else {
-                emit(Result.Error("User not found"))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error(e.message.toString()))
-        }
-    }
-
-    fun requestResetPassword(email: String): LiveData<Result<Unit>> = liveData {
-        emit(Result.Loading)
-        try {
-            val response = authApiService.requestResetPassword(email)
-            if (response.isSuccessful) {
-                emit(Result.Success(Unit))
-            } else {
-                emit(Result.Error(response.body()?.message.toString()))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
-        }
-    }
-
-    fun verifyOTP(email: String, otp: String): LiveData<Result<Unit>> = liveData {
-        emit(Result.Loading)
-        try {
-            val response = authApiService.verifyOTP(email, otp)
-            if (response.isSuccessful) {
-                emit(Result.Success(Unit))
-            } else {
-                emit(Result.Error(response.body()?.message.toString()))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error("An error occurred: ${e.message}"))
-        }
-    }
-
-    fun resetPassword(email: String, otp: String, password: String): LiveData<Result<Unit>> =
-        liveData {
-            emit(Result.Loading)
-            try {
-                val response = authApiService.resetPassword(email, otp, password)
-                if (response.isSuccessful) {
-                    emit(Result.Success(Unit))
-                } else {
-                    emit(Result.Error(response.body()?.message.toString()))
-                }
-            } catch (e: Exception) {
-                emit(Result.Error("An error occurred: ${e.message}"))
-            }
+            firebaseAuth.signInWithCustomToken(firebaseCustomToken).await()
+        } catch (error: Exception) {
+            return Result.Error(error.toUserMessage("Firebase authentication failed"))
         }
 
-    fun getUserRole(): LiveData<String> {
-        return preferencesManager.getUserRole().asLiveData()
+        preferences.saveToken(token)
+        preferences.saveUserRole(role)
+        preferences.saveUserId(user.id)
+        userDao.clearUserData()
+        userDao.insertUser(user.toEntity())
+        return Result.Success(response)
     }
 }

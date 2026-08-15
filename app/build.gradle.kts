@@ -1,13 +1,30 @@
 import java.util.Properties
 
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+fun configurationValue(name: String, fallback: String): String =
+    providers.gradleProperty(name).orNull
+        ?: localProperties.getProperty(name)
+        ?: fallback
+
+fun String.asBuildConfigString(): String =
+    "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("kotlin-parcelize")
-    alias(libs.plugins.google.gms.google.services)
+}
+
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {
@@ -21,6 +38,20 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        buildConfigField(
+            "String",
+            "BASE_URL",
+            configurationValue(
+                "MENTALQ_BASE_URL",
+                "https://mentalq-backend.vercel.app/api/"
+            ).asBuildConfigString()
+        )
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            configurationValue("GOOGLE_WEB_CLIENT_ID", "").asBuildConfigString()
+        )
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -31,55 +62,16 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField(
-                "String",
-                "BASE_URL",
-                "\"https://mentalq-backend.vercel.app/api/\""
-            )
-//            buildConfigField(
-//                "String",
-//                "BASE_URL",
-//                "\"https://mentalq-backend-130948402050.asia-southeast2.run.app/api/\""
-//            )
         }
-        debug {
-            buildConfigField(
-                "String",
-                "BASE_URL",
-                "\"https://mentalq-backend.vercel.app/api/\""
-            )
-//            buildConfigField(
-//                "String",
-//                "BASE_URL",
-//                "\"https://mentalq-backend-130948402050.asia-southeast2.run.app/api/\""
-//            )
-
-            val localPropertiesFile = project.rootProject.file("local.properties")
-            val properties = Properties()
-            properties.load(localPropertiesFile.inputStream())
-
-            val apiKey = properties.getProperty("GEMINI_API_KEY")
-
-            buildConfigField(
-                "String",
-                "GEMINI_API_KEY",
-                "\"$apiKey\""
-            )
-
-            buildConfigField(
-                "String",
-                "GEMINI_BASE_URL",
-                "\"https://generativelanguage.googleapis.com/\""
-            )
-        }
+        debug { }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -87,9 +79,14 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -97,7 +94,9 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.database)
     implementation(libs.play.services.auth)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -114,16 +113,14 @@ dependencies {
     implementation(libs.converter.gson)
     implementation(libs.logging.interceptor)
 
-    implementation(libs.glide)
-
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.hilt.android)
-    implementation(libs.androidx.hilt.work)
     ksp(libs.hilt.android.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
 
@@ -135,12 +132,4 @@ dependencies {
 
     implementation(libs.coil.compose)
 
-    implementation(libs.androidx.core.splashscreen)
-
-    implementation(libs.firebase.database)
-    implementation(platform(libs.firebase.bom))
-
-    implementation(libs.material.icons.extended)
-
-    implementation(libs.uikit)
 }

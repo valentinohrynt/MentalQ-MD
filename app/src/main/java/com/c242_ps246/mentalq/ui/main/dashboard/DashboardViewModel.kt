@@ -10,13 +10,13 @@ import com.c242_ps246.mentalq.data.repository.AuthRepository
 import com.c242_ps246.mentalq.data.repository.NoteRepository
 import com.c242_ps246.mentalq.data.repository.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 @HiltViewModel
@@ -24,7 +24,7 @@ class DashboardViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val authRepository: AuthRepository,
     private val analysisRepository: AnalysisRepository,
-    private val preferencesManager: MentalQAppPreferences
+    private val preferences: MentalQAppPreferences
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DashboardScreenUiState())
     val uiState = _uiState.asStateFlow()
@@ -41,144 +41,124 @@ class DashboardViewModel @Inject constructor(
     private val _predictedStatusMode = MutableStateFlow<String?>(null)
     val predictedStatusMode = _predictedStatusMode.asStateFlow()
 
-    private val _analysisSize = MutableStateFlow<Int>(0)
+    private val _analysisSize = MutableStateFlow(0)
     val analysisSize = _analysisSize.asStateFlow()
 
+    private val loadingOperations = mutableSetOf<String>()
+    private var notesJob: Job? = null
+    private var analysisJob: Job? = null
+    private var userJob: Job? = null
+
     init {
+        refresh()
+    }
+
+    fun refresh() {
         loadLatestNotes()
+        getUserData()
+        getPredictedStatusMode()
     }
 
     fun loadLatestNotes() {
-        noteRepository.getAllNotes().observeForever { result ->
-            when (result) {
-                Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
+        notesJob?.cancel()
+        notesJob = viewModelScope.launch {
+            startLoading(NOTES)
+            try {
+                noteRepository.getAllNotes().collect { result ->
+                    when (result) {
+                        Result.Loading -> Unit
+                        is Result.Success -> {
+                            _listNote.value = result.data.take(5)
+                            updateStreak(result.data)
+                            clearError()
+                        }
+                        is Result.Error -> setError(result.error)
+                    }
                 }
-
-                is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-                    _listNote.value = result.data.take(5)
-                }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = result.error)
-                }
+            } finally {
+                stopLoading(NOTES)
             }
         }
     }
 
     fun getUserData() {
-        authRepository.getUser().observeForever { result ->
-            when (result) {
-                Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
+        userJob?.cancel()
+        userJob = viewModelScope.launch {
+            startLoading(USER)
+            when (val result = authRepository.getUser()) {
+                Result.Loading -> Unit
                 is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
                     _userData.value = result.data
+                    clearError()
                 }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = result.error)
-                }
+                is Result.Error -> setError(result.error)
             }
+            stopLoading(USER)
         }
     }
 
     fun calculateStreak() {
-        viewModelScope.launch {
-            noteRepository.getAllNotes().observeForever { result ->
-                when (result) {
-                    is Result.Loading -> {
-                        _uiState.value = _uiState.value.copy(isLoading = true)
-                    }
-
-                    is Result.Success -> {
-                        val sortedNotes = result.data.sortedByDescending { it.createdAt }
-                        if (sortedNotes.isEmpty()) {
-                            _streakInfo.value = StreakInfo()
-                            return@observeForever
-                        }
-                        val dates = sortedNotes.mapNotNull { note ->
-                            try {
-                                val instant = Instant.parse(note.createdAt)
-                                instant.atZone(ZoneId.systemDefault()).toLocalDate()
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
-
-                        val streak = calculateDiaryStreak(dates)
-                        _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-                        _streakInfo.value = streak
-                    }
-
-                    else -> {
-                        _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-                        _streakInfo.value = StreakInfo()
-                    }
-                }
-            }
-        }
-    }
-
-    private fun calculateDiaryStreak(dates: List<LocalDate>): StreakInfo {
-        if (dates.isEmpty()) return StreakInfo()
-
-        val today = LocalDate.now()
-        val lastEntryDate = dates.first()
-
-        if (ChronoUnit.DAYS.between(lastEntryDate, today) > 1) {
-            return StreakInfo(
-                currentStreak = 0,
-                lastEntryDate = lastEntryDate
-            )
-        }
-
-        var currentStreak = 1
-        var previousDate = lastEntryDate
-
-        for (i in 1 until dates.size) {
-            val currentDate = dates[i]
-            val daysBetween = ChronoUnit.DAYS.between(currentDate, previousDate)
-
-            if (daysBetween == 1L) {
-                currentStreak++
-                previousDate = currentDate
-            } else {
-                break
-            }
-        }
-        viewModelScope.launch {
-            preferencesManager.saveStreakInfo(lastEntryDate.toString(), currentStreak)
-        }
-
-        return StreakInfo(
-            currentStreak = currentStreak,
-            lastEntryDate = lastEntryDate
-        )
+        updateStreak(_listNote.value)
     }
 
     fun getPredictedStatusMode() {
-        analysisRepository.getAnalysis().observeForever { result ->
-            when (result) {
-                Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
+        analysisJob?.cancel()
+        analysisJob = viewModelScope.launch {
+            startLoading(ANALYSIS)
+            try {
+                analysisRepository.getAnalysis().collect { result ->
+                    when (result) {
+                        Result.Loading -> Unit
+                        is Result.Success -> {
+                            val (_, size, mode) = result.data
+                            _analysisSize.value = size
+                            _predictedStatusMode.value = mode
+                            clearError()
+                        }
+                        is Result.Error -> setError(result.error)
+                    }
                 }
-
-                is Result.Success -> {
-                    val (_, size, mode) = result.data
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-                    _analysisSize.value = size
-                    _predictedStatusMode.value = mode
-                }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = result.error)
-                }
+            } finally {
+                stopLoading(ANALYSIS)
             }
         }
+    }
+
+    private fun updateStreak(notes: List<ListNoteItem>) {
+        val dates = notes.mapNotNull { note ->
+            runCatching {
+                Instant.parse(note.createdAt).atZone(ZoneId.systemDefault()).toLocalDate()
+            }.getOrNull()
+        }
+        val streak = StreakCalculator.calculate(dates)
+        _streakInfo.value = streak
+        viewModelScope.launch {
+            preferences.saveStreakInfo(streak.lastEntryDate?.toString().orEmpty(), streak.currentStreak)
+        }
+    }
+
+    private fun startLoading(operation: String) {
+        loadingOperations += operation
+        _uiState.value = _uiState.value.copy(isLoading = true)
+    }
+
+    private fun stopLoading(operation: String) {
+        loadingOperations -= operation
+        _uiState.value = _uiState.value.copy(isLoading = loadingOperations.isNotEmpty())
+    }
+
+    private fun setError(message: String) {
+        _uiState.value = _uiState.value.copy(error = message)
+    }
+
+    private fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private companion object {
+        const val NOTES = "notes"
+        const val USER = "user"
+        const val ANALYSIS = "analysis"
     }
 }
 
@@ -192,3 +172,22 @@ data class StreakInfo(
     val currentStreak: Int = 0,
     val lastEntryDate: LocalDate? = null
 )
+
+internal object StreakCalculator {
+    fun calculate(dates: List<LocalDate>, today: LocalDate = LocalDate.now()): StreakInfo {
+        val orderedDates = dates.distinct().sortedDescending()
+        val lastEntryDate = orderedDates.firstOrNull() ?: return StreakInfo()
+        if (lastEntryDate.isBefore(today.minusDays(1))) {
+            return StreakInfo(lastEntryDate = lastEntryDate)
+        }
+
+        var streak = 1
+        var previousDate = lastEntryDate
+        orderedDates.drop(1).forEach { date ->
+            if (date != previousDate.minusDays(1)) return@forEach
+            streak += 1
+            previousDate = date
+        }
+        return StreakInfo(currentStreak = streak, lastEntryDate = lastEntryDate)
+    }
+}

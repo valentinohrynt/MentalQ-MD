@@ -1,183 +1,99 @@
 package com.c242_ps246.mentalq.data.repository
 
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.liveData
-import com.c242_ps246.mentalq.BuildConfig
 import com.c242_ps246.mentalq.data.local.room.NoteDao
-import com.c242_ps246.mentalq.data.remote.response.GeminiPart
-import com.c242_ps246.mentalq.data.remote.response.GeminiRequest
-import com.c242_ps246.mentalq.data.remote.response.GeminiRequestContent
-import com.c242_ps246.mentalq.data.remote.response.GeminiSafetySettings
+import com.c242_ps246.mentalq.data.local.room.toEntity
+import com.c242_ps246.mentalq.data.local.room.toModel
 import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
-import com.c242_ps246.mentalq.data.remote.retrofit.GeminiApiService
 import com.c242_ps246.mentalq.data.remote.retrofit.NoteApiService
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class NoteRepository(
+@Singleton
+class NoteRepository @Inject constructor(
     private val noteDao: NoteDao,
-    private val noteApiService: NoteApiService,
-    private val geminiApiService: GeminiApiService
+    private val noteApiService: NoteApiService
 ) {
-
-    private val GEMINI_API_KEY = BuildConfig.GEMINI_API_KEY
-
-    fun getAllNotes(): LiveData<Result<List<ListNoteItem>>> = liveData {
+    fun getAllNotes(): Flow<Result<List<ListNoteItem>>> = flow {
         emit(Result.Loading)
+        val localNotes = try {
+            noteDao.getAllNotes().map { it.toModel() }.sortedByDescending { it.createdAt }
+        } catch (error: Exception) {
+            emit(Result.Error(error.toUserMessage("Unable to read saved notes")))
+            return@flow
+        }
+
+        if (localNotes.isNotEmpty()) emit(Result.Success(localNotes))
+
         try {
-            val localData = noteDao.getAllNotes()
-            emit(Result.Success(localData.sortedByDescending { it.createdAt }))
-
-            try {
-                val response = noteApiService.getNotes()
-                val remoteNotes = response.listNote
-
-                if (remoteNotes != null) {
-                    val noteList = remoteNotes.map { note ->
-                        ListNoteItem(
-                            id = note.id,
-                            title = note.title,
-                            content = note.content,
-                            contentNormalized = note.contentNormalized,
-                            emotion = note.emotion,
-                            updatedAt = note.updatedAt,
-                            createdAt = note.createdAt,
-                            predictedStatus = note.predictedStatus,
-                            confidenceScore = note.confidenceScore
-                        )
-                    }
-                    if (localData != noteList) {
-                        noteDao.clearAllNotes()
-                        noteDao.insertAllNotes(noteList)
-                        emit(Result.Success(noteList.sortedByDescending { it.createdAt }))
-                    }
-                }
-            } catch (e: Exception) {
-                if (localData.isEmpty()) {
-                    emit(Result.Error("Failed to fetch remote data, check your internet connection and try again."))
-                }
+            val remoteNotes = noteApiService.getNotes().listNote
+                .orEmpty()
+                .sortedByDescending { it.createdAt }
+            if (remoteNotes != localNotes) {
+                noteDao.replaceAllNotes(remoteNotes.map { it.toEntity() })
             }
-        } catch (e: Exception) {
-            emit(Result.Error("Database error: ${e.message}"))
-        }
-    }
-
-    suspend fun getNoteById(noteId: String): ListNoteItem? = withContext(Dispatchers.IO) {
-        try {
-            noteDao.getNoteById(noteId)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    fun insertNote(note: ListNoteItem): LiveData<Result<ListNoteItem>> = liveData(Dispatchers.IO) {
-        emit(Result.Loading)
-        try {
-            val response = noteApiService.createNote(
-                title = note.title ?: "",
-                content = note.content ?: "",
-                emotion = note.emotion ?: ""
-            )
-            if (response.error == false && response.note != null) {
-                val newNote = ListNoteItem(
-                    id = response.note.id,
-                    title = response.note.title,
-                    content = response.note.content,
-                    contentNormalized = response.note.contentNormalized,
-                    emotion = response.note.emotion,
-                    updatedAt = response.note.updatedAt,
-                    createdAt = response.note.createdAt
-                )
-                noteDao.insertNote(newNote)
-                emit(Result.Success(newNote))
-            } else {
-                emit(Result.Error("Failed to create note: ${response.message}"))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error("Network error: ${e.message}"))
-        }
-    }
-    
-    suspend fun updateNote(note: ListNoteItem): Result<ListNoteItem> = withContext(Dispatchers.IO) {
-        try {
-            val geminiPrompt = """
-            You are an expert Translator. Translate the following text to Indonesian. 
-            Return only the translated text without explanations, quotes, or formatting.
-            Text: ${note.content}
-        """.trimIndent()
-
-            val geminiSafetySettings = listOf(
-                GeminiSafetySettings("HARM_CATEGORY_HATE_SPEECH", "BLOCK_NONE"),
-                GeminiSafetySettings("HARM_CATEGORY_DANGEROUS_CONTENT", "BLOCK_NONE"),
-                GeminiSafetySettings("HARM_CATEGORY_SEXUALLY_EXPLICIT", "BLOCK_NONE"),
-                GeminiSafetySettings("HARM_CATEGORY_HARASSMENT", "BLOCK_NONE")
-            )
-
-            val normalizedText = try {
-                if (!note.content.isNullOrEmpty()) {
-                    val responseGemini = geminiApiService.normalizeText(
-                        apiKey = GEMINI_API_KEY,
-                        GeminiRequest(
-                            contents = listOf(
-                                GeminiRequestContent(
-                                    role = "user",
-                                    parts = listOf(GeminiPart(text = geminiPrompt))
-                                )
-                            ),
-                            safetySettings = geminiSafetySettings
-                        )
-                    )
-                    responseGemini.candidates?.firstOrNull()
-                        ?.content?.parts?.firstOrNull()?.text
-                        ?: note.content
-                } else note.content
-            } catch (e: Exception) {
-                return@withContext Result.Error("Failed to normalize text: ${e.message}")
-            }
-
-            val updatedNote = note.copy(contentNormalized = normalizedText)
-
-            val response = noteApiService.updateNote(
-                id = note.id.toString(),
-                title = note.title ?: "",
-                content = note.content ?: "",
-                emotion = note.emotion ?: "",
-                contentNormalized = normalizedText ?: note.content ?: ""
-            )
-
-            if (response.error == false) {
-                noteDao.updateNote(updatedNote)
-                Result.Success(updatedNote)
-            } else {
-                Result.Error("Failed to update note: ${response.message}")
-            }
-        } catch (e: Exception) {
-            Result.Error("Network error: ${e.message}")
-        }
-    }
-
-    fun deleteNoteById(noteId: String): LiveData<Result<String>> = liveData(Dispatchers.IO) {
-        emit(Result.Loading)
-        try {
-            val response = noteApiService.deleteNote(id = noteId)
-            if (response.error == false) {
-                noteDao.deleteNoteById(noteId)
-                emit(Result.Success(response.message ?: "Note deleted successfully"))
-            } else {
-                emit(Result.Error("Failed to delete note: ${response.message}"))
-            }
-        } catch (e: Exception) {
-            emit(Result.Error("Network error: ${e.message}"))
-        }
-    }
-
-    suspend fun getLastNote(): ListNoteItem? {
-        return withContext(Dispatchers.IO) {
-            try {
-                noteDao.getLastNote()
-            } catch (e: Exception) {
-                null
+            emit(Result.Success(remoteNotes))
+        } catch (error: Exception) {
+            if (localNotes.isEmpty()) {
+                emit(Result.Error(error.toUserMessage("Unable to fetch notes")))
             }
         }
+    }.flowOn(Dispatchers.IO)
+
+    suspend fun getNoteById(noteId: String): ListNoteItem? =
+        runCatching { noteDao.getNoteById(noteId)?.toModel() }.getOrNull()
+
+    suspend fun insertNote(note: ListNoteItem): Result<ListNoteItem> = try {
+        val response = noteApiService.createNote(
+            title = note.title.orEmpty(),
+            content = note.content.orEmpty(),
+            emotion = note.emotion.orEmpty()
+        )
+        val createdNote = response.note
+        if (response.error == true || createdNote == null) {
+            Result.Error(response.message ?: "Unable to create the note")
+        } else {
+            noteDao.insertNote(createdNote.toEntity())
+            Result.Success(createdNote)
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to create the note"))
     }
+
+    suspend fun updateNote(note: ListNoteItem): Result<ListNoteItem> = try {
+        val response = noteApiService.updateNote(
+            id = note.id,
+            title = note.title.orEmpty(),
+            content = note.content.orEmpty(),
+            emotion = note.emotion.orEmpty()
+        )
+
+        if (response.error == true) {
+            Result.Error(response.message ?: "Unable to update the note")
+        } else {
+            val updatedNote = response.note ?: note.copy(contentNormalized = null)
+            noteDao.updateNote(updatedNote.toEntity())
+            Result.Success(updatedNote)
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to update the note"))
+    }
+
+    suspend fun deleteNoteById(noteId: String): Result<String> = try {
+        val response = noteApiService.deleteNote(noteId)
+        if (response.error == true) {
+            Result.Error(response.message ?: "Unable to delete the note")
+        } else {
+            noteDao.deleteNoteById(noteId)
+            Result.Success(response.message ?: "Note deleted")
+        }
+    } catch (error: Exception) {
+        Result.Error(error.toUserMessage("Unable to delete the note"))
+    }
+
+    suspend fun getLastNote(): ListNoteItem? =
+        runCatching { noteDao.getLastNote()?.toModel() }.getOrNull()
 }

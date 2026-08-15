@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.c242_ps246.mentalq.data.repository.NoteRepository
+import com.c242_ps246.mentalq.data.manager.MentalQAppPreferences
 import dagger.hilt.android.EntryPointAccessors
 import java.time.Duration
 import java.time.Instant
 import javax.inject.Inject
+import kotlinx.coroutines.flow.first
 
 class DailyReminderWorker(
     context: Context,
@@ -17,6 +19,9 @@ class DailyReminderWorker(
     @Inject
     lateinit var noteRepository: NoteRepository
 
+    @Inject
+    lateinit var preferences: MentalQAppPreferences
+
     init {
         val appContext = context.applicationContext
         EntryPointAccessors.fromApplication(appContext, DailyReminderWorkerEntryPoint::class.java)
@@ -25,14 +30,14 @@ class DailyReminderWorker(
 
     override suspend fun doWork(): Result {
         return try {
+            if (!preferences.getNotificationsState().first()) return Result.success()
             val lastNoteAdded = noteRepository.getLastNote()?.createdAt
             if (shouldShowNotification(lastNoteAdded)) {
                 showNotification()
             }
             Result.success()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure()
+        } catch (_: Exception) {
+            Result.retry()
         }
     }
 
@@ -41,8 +46,7 @@ class DailyReminderWorker(
 
         val lastCreatedAtInstant = try {
             Instant.parse(lastCreatedAt)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
             return true
         }
 

@@ -41,4 +41,10 @@ data class DataTransactionStatus(
 
     @field:SerializedName("status_message")
     val statusMessage: String,
+
+    @field:SerializedName("chat_id")
+    val chatId: String? = null,
+
+    @field:SerializedName("chat_error")
+    val chatError: String? = null,
 )

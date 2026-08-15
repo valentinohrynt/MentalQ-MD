@@ -22,7 +22,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,9 +42,7 @@ fun CustomNavigationBar(
     onItemSelected: (Int, String) -> Unit,
     userRole: String
 ) {
-    rememberCoroutineScope()
-
-    val items = if (userRole == "user") {
+    val items = remember(userRole) { if (userRole == "user") {
         listOf(
             BottomNavItem("Dashboard", R.drawable.ic_home, Routes.DASHBOARD),
             BottomNavItem("Note", R.drawable.ic_note, Routes.NOTE),
@@ -56,7 +54,7 @@ fun CustomNavigationBar(
             BottomNavItem("Chat", R.drawable.ic_chat, Routes.CHAT),
             BottomNavItem("Profile", R.drawable.ic_profile, Routes.PROFILE)
         )
-    }
+    } }
 
     val colorScheme = MaterialTheme.colorScheme
 

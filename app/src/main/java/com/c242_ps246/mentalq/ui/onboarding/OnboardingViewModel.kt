@@ -1,27 +1,27 @@
 package com.c242_ps246.mentalq.ui.onboarding
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.c242_ps246.mentalq.data.manager.MentalQAppPreferences
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-class OnboardingViewModel(application: Application) : AndroidViewModel(application) {
-    private val onboardingManager = MentalQAppPreferences(application)
-
-    val shouldShowOnboarding: StateFlow<Boolean> = onboardingManager.shouldShowOnboarding
+@HiltViewModel
+class OnboardingViewModel @Inject constructor(
+    private val preferences: MentalQAppPreferences
+) : ViewModel() {
+    val shouldShowOnboarding: StateFlow<Boolean> = preferences.shouldShowOnboarding
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.WhileSubscribed(5_000),
             initialValue = true
         )
 
     fun onOnboardingCompleted() {
-        viewModelScope.launch {
-            onboardingManager.completeOnboarding()
-        }
+        viewModelScope.launch { preferences.completeOnboarding() }
     }
 }

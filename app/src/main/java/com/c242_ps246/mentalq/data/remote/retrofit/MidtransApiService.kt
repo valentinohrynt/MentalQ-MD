@@ -18,7 +18,6 @@ interface MidtransApiService {
     @FormUrlEncoded
     @POST("transaction")
     suspend fun createTransaction(
-        @Field("price") price: Int,
         @Field("item_id") itemId: String,
     ): TransactionResponse
 

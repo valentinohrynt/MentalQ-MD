@@ -37,8 +37,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.c242_ps246.mentalq.R
 import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
 import com.c242_ps246.mentalq.ui.utils.Utils.formatDate
@@ -68,32 +67,13 @@ fun DashboardScreen(
     onNavigateToPsychologistList: () -> Unit
 ) {
     val viewModel: DashboardViewModel = hiltViewModel()
-    val uiState by viewModel.uiState.collectAsState()
-    val listNote by viewModel.listNote.collectAsState()
-    val userData by viewModel.userData.collectAsState()
-    val streakInfo by viewModel.streakInfo.collectAsState()
-    val predictedStatusMode by viewModel.predictedStatusMode.collectAsState()
-    val analysisSize by viewModel.analysisSize.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val listNote by viewModel.listNote.collectAsStateWithLifecycle()
+    val userData by viewModel.userData.collectAsStateWithLifecycle()
+    val streakInfo by viewModel.streakInfo.collectAsStateWithLifecycle()
+    val predictedStatusMode by viewModel.predictedStatusMode.collectAsStateWithLifecycle()
+    val analysisSize by viewModel.analysisSize.collectAsStateWithLifecycle()
     val (weekDay, day) = getTodayDateFormatted()
-
-    LaunchedEffect(Unit) {
-        viewModel.loadLatestNotes()
-        viewModel.calculateStreak()
-        viewModel.getUserData()
-        viewModel.getPredictedStatusMode()
-    }
-
-    LaunchedEffect(streakInfo) {
-        viewModel.calculateStreak()
-    }
-
-    LaunchedEffect(userData) {
-        viewModel.getUserData()
-    }
-
-    LaunchedEffect(analysisSize) {
-        viewModel.getPredictedStatusMode()
-    }
 
     val scrollState = rememberScrollState()
     val toolbarHeight = 150.dp
@@ -395,6 +375,12 @@ fun DashboardScreen(
                                                 "Personality Disorder" -> stringResource(R.string.personality_disorder_message)
                                                 "Stress" -> stringResource(R.string.stress_message)
                                                 "Suicidal" -> stringResource(R.string.suicidal_message)
+                                                "Positive", "Calm" -> stringResource(R.string.normal_message)
+                                                "Mixed" -> stringResource(R.string.unknown_condition_message)
+                                                "Stressed" -> stringResource(R.string.stress_message)
+                                                "Anxious" -> stringResource(R.string.anxiety_message)
+                                                "Low Mood" -> stringResource(R.string.depression_message)
+                                                "Needs Support" -> stringResource(R.string.suicidal_message)
                                                 else -> stringResource(R.string.unknown_condition_message)
                                             }
                                         } else {

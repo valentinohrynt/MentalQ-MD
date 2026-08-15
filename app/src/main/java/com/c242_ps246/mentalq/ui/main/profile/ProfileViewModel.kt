@@ -17,6 +17,7 @@ import com.c242_ps246.mentalq.ui.notification.dailyreminder.DailyReminderWorker
 import com.c242_ps246.mentalq.ui.notification.streak.StreakNotificationHelper
 import com.c242_ps246.mentalq.ui.notification.streak.StreakWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,56 +32,61 @@ import javax.inject.Inject
 class ProfileViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository,
-    private val preferencesManager: MentalQAppPreferences,
-    private val workManager: WorkManager
+    private val preferences: MentalQAppPreferences,
+    private val workManager: WorkManager,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
-
     private val _uiState = MutableStateFlow(AuthScreenUIState())
     val uiState = _uiState.asStateFlow()
 
     private val _userData = MutableStateFlow<UserData?>(null)
     val userData = _userData.asStateFlow()
 
-    val notificationsEnabled = preferencesManager.getNotificationsState().stateIn(
+    val notificationsEnabled = preferences.getNotificationsState().stateIn(
         viewModelScope,
-        SharingStarted.WhileSubscribed(5000),
+        SharingStarted.WhileSubscribed(5_000),
         false
     )
 
-    fun logout() {
+    init {
+        getUserData()
+    }
+
+    fun logout(onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
-            authRepository.logout()
+            workManager.cancelUniqueWork(StreakNotificationHelper.WORK_NAME)
+            workManager.cancelUniqueWork(DAILY_REMINDER_WORK_NAME)
+            when (val result = authRepository.logout()) {
+                Result.Loading -> Unit
+                is Result.Success -> onComplete?.invoke()
+                is Result.Error -> _uiState.value = AuthScreenUIState(error = result.error)
+            }
         }
     }
 
-    fun setNotificationsEnabled(enabled: Boolean, context: Context) {
+    fun setNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            preferencesManager.setNotificationsEnabled(enabled)
+            preferences.setNotificationsEnabled(enabled)
             if (enabled) {
-                StreakWorker.scheduleNextNotification(context)
+                StreakWorker.scheduleNextNotification(appContext)
                 scheduleReminder()
             } else {
                 workManager.cancelUniqueWork(StreakNotificationHelper.WORK_NAME)
-                cancelReminder()
+                workManager.cancelUniqueWork(DAILY_REMINDER_WORK_NAME)
             }
         }
     }
 
     fun getUserData() {
-        authRepository.getUser().observeForever { result ->
-            when (result) {
-                Result.Loading -> {
-                    _uiState.value = _uiState.value.copy(isLoading = true)
-                }
-
+        viewModelScope.launch {
+            _uiState.value = AuthScreenUIState(isLoading = true)
+            when (val result = authRepository.getUser()) {
+                Result.Loading -> Unit
                 is Result.Success -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = null)
                     _userData.value = result.data
+                    _uiState.value = AuthScreenUIState()
                 }
-
-                is Result.Error -> {
-                    _uiState.value = _uiState.value.copy(isLoading = false, error = result.error)
-                }
+                is Result.Error -> _uiState.value = AuthScreenUIState(error = result.error)
             }
         }
     }
@@ -89,27 +95,20 @@ class ProfileViewModel @Inject constructor(
         name: RequestBody,
         email: RequestBody,
         birthday: RequestBody,
-        profileImage: MultipartBody.Part?
+        profileImage: MultipartBody.Part?,
+        onSuccess: (() -> Unit)? = null
     ) {
         viewModelScope.launch {
-            userRepository.updateProfile(name, email, birthday, profileImage)
-                .observeForever { result ->
-                    when (result) {
-                        Result.Loading -> {
-                            _uiState.value = _uiState.value.copy(isLoading = true)
-                        }
-
-                        is Result.Success -> {
-                            _uiState.value = _uiState.value.copy(isLoading = false, error = null)
-                            _userData.value = result.data
-                        }
-
-                        is Result.Error -> {
-                            _uiState.value =
-                                _uiState.value.copy(isLoading = false, error = result.error)
-                        }
-                    }
+            _uiState.value = AuthScreenUIState(isLoading = true)
+            when (val result = userRepository.updateProfile(name, email, birthday, profileImage)) {
+                Result.Loading -> Unit
+                is Result.Success -> {
+                    _userData.value = result.data
+                    _uiState.value = AuthScreenUIState(success = true)
+                    onSuccess?.invoke()
                 }
+                is Result.Error -> _uiState.value = AuthScreenUIState(error = result.error)
+            }
         }
     }
 
@@ -118,12 +117,8 @@ class ProfileViewModel @Inject constructor(
             .build()
         workManager.enqueueUniquePeriodicWork(
             DAILY_REMINDER_WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
+            ExistingPeriodicWorkPolicy.UPDATE,
             reminderRequest
         )
-    }
-
-    private fun cancelReminder() {
-        workManager.cancelUniqueWork(DAILY_REMINDER_WORK_NAME)
     }
 }

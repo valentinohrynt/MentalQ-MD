@@ -1,6 +1,5 @@
 package com.c242_ps246.mentalq.data.remote.response
 
-import androidx.room.Entity
 import com.google.gson.annotations.SerializedName
 
 data class PsychologistResponse(
@@ -26,7 +25,6 @@ data class SinglePsychologistResponse(
 )
 
 
-@Entity(tableName = "psychologist")
 data class PsychologistItem(
 
     @field:SerializedName("psychologist_id")

@@ -18,8 +18,6 @@
     <string name="label_password">Password</string>
     <string name="button_login">Login</string>
     <string name="button_register">Register</string>
-    <string name="text_no_account">Don\'t have an account? Register</string>
-    <string name="text_have_account">Already have an account? Login</string>
     <string name="error_email_empty">Email cannot be empty</string>
     <string name="error_email_invalid">Invalid email format</string>
     <string name="error_password_empty">Password cannot be empty</string>
@@ -36,17 +34,8 @@
 
     <string name="hello_user">Hello, </string>
     <string name="diary_streak">Diary streak</string>
-    <string name="day_wed">Wed</string>
     <string name="current_state">Current State</string>
-    <string name="state_anxiety">Anxiety</string>
-    <string name="lorem_ipsum">Lorem ipsum dolor sit amet, consectetur adipiscing elit…</string>
     <string name="latest_diary">Latest diary</string>
-    <string name="feeling_tired">I\'m feeling tired</string>
-    <string name="date_format">17 February 2024 | 12:30</string>
-    <string name="cd_profile_picture">Profile picture</string>
-    <string name="cd_home">Home</string>
-    <string name="cd_diary">Diary</string>
-    <string name="cd_profile">Profile</string>
     <string name="mental_health_matters">Mental health matters!</string>
     <string name="your_note">Your Note</string>
     <string name="your_profile">Your Profile</string>
@@ -60,8 +49,6 @@
     <string name="terms_of_service">Terms of Service</string>
     <string name="logout">Logout</string>
     <string name="logout_message">Are you sure you want to logout? You\'ll need to login again to access your account.</string>
-    <string name="note_title">Title</string>
-    <string name="note_content">Content</string>
     <string name="happy">Happy</string>
     <string name="anxious">Anxious</string>
     <string name="angry">Angry</string>
@@ -71,7 +58,6 @@
     <string name="streak_notification_content_1">You\'re on a</string>
     <string name="streak_notification_content_2">-day streak! Log your entry today.</string>
     <string name="login_failed">Login failed!</string>
-    <string name="register_failed">Register failed, please check your input and try again.</string>
     <string name="login_success">Login success!</string>
     <string name="register_success">Register success, please check your email to verify and activate your account!</string>
     <string name="delete">Delete</string>
@@ -94,7 +80,6 @@
     <string name="error_password_uppercase">Password must contain uppercase characters</string>
     <string name="error_password_digit">Password must contain number</string>
     <string name="error_occurred">An error occurred</string>
-    <string name="forgot_password_button">Forgot Password</string>
     <string name="forgot_password_title">Forgot Password</string>
     <string name="forgot_password_subtitle">Enter your email address to receive a verification code</string>
     <string name="send_verification_code">Send Verification Code</string>
@@ -105,7 +90,6 @@
     <string name="new_password_step_title">Reset Password</string>
     <string name="new_password_step_subtitle">Enter your new password</string>
     <string name="new_password">New Password</string>
-    <string name="confirm_email">Confirm Password</string>
     <string name="reset_password">Reset Password</string>
 
     <string name="note_not_sufficient">Notes are not sufficient</string>
@@ -120,7 +104,6 @@
 
     <string name="add_more_note">Please provide more information about how you\'re feeling to receive a more accurate assessment (at least 7 notes).</string>
     <string name="sign_in_with_google">Sign in with Google</string>
-    <string name="google_sign_in_failed">Google Sign-In failed</string>
 
     <string name="not_sufficient_data_disclaimer">The analysis isn\'t accurate yet. Please add more notes until there are at least 28 for better results.</string>
     <string name="sufficient_data_disclaimer">The analysis is accurate now because enough notes have been added.</string>
@@ -133,7 +116,6 @@
     <string name="cannot_add_note">You have already added a note for today, come back again tomorrow!</string>
     <string name="back">Back</string>
 
-    <string name="voice_error_no_input">Please speak now. Make sure your microphone isn\'t muted</string>
     <string name="voice_error_cant_hear">Can\'t hear you. Please speak louder</string>
     <string name="voice_error_generic">Sorry, something went wrong. Please try again</string>
     <string name="voice_error_timeout">Recording stopped. Please try again</string>
@@ -174,7 +156,5 @@
     <string name="prediction_disclaimer_or">or</string>
     <string name="prediction_disclaimer_bold_2">reflect mental health</string>
     <string name="prediction_disclaimer_consult">. Consult a professional for advice</string>
-    <string name="not_available">(Not Available)</string>
-    <string name="default_web_client_id">1056734232546-9btt30pq6ieiv05gs95o9aoo06ei2nri.apps.googleusercontent.com</string>
     <string name="confirm_password">Repeat your new password</string>
 </resources>

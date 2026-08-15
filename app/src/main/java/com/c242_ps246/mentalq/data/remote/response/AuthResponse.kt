@@ -1,7 +1,5 @@
 package com.c242_ps246.mentalq.data.remote.response
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
 import com.google.gson.annotations.SerializedName
 
 data class AuthResponse(
@@ -15,7 +13,10 @@ data class AuthResponse(
     val message: String? = null,
 
     @field:SerializedName("token")
-    val token: String? = null
+    val token: String? = null,
+
+    @field:SerializedName("firebase_custom_token")
+    val firebaseCustomToken: String? = null
 )
 
 data class RegisterResponse(
@@ -26,6 +27,17 @@ data class RegisterResponse(
     val message: String? = null
 )
 
+data class FirebaseTokenResponse(
+    @field:SerializedName("error")
+    val error: Boolean? = null,
+
+    @field:SerializedName("message")
+    val message: String? = null,
+
+    @field:SerializedName("firebase_custom_token")
+    val firebaseCustomToken: String? = null
+)
+
 data class RequestResetPasswordResponse(
     @field:SerializedName("error")
     val error: Boolean? = null,
@@ -34,9 +46,7 @@ data class RequestResetPasswordResponse(
     val message: String? = null
 )
 
-@Entity(tableName = "user_data")
 data class UserData(
-    @PrimaryKey
     @field:SerializedName("user_id")
     val id: String,
 

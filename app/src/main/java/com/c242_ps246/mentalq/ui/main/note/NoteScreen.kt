@@ -14,7 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -32,7 +32,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -46,6 +45,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.c242_ps246.mentalq.R
 import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
 import com.c242_ps246.mentalq.ui.component.CustomToast
@@ -62,8 +62,8 @@ fun NoteScreen(
     viewModel: NoteViewModel = hiltViewModel(),
     onNavigateToNoteDetail: (String) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val listNote by viewModel.listNote.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val listNote by viewModel.listNote.collectAsStateWithLifecycle()
 
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -72,7 +72,7 @@ fun NoteScreen(
     var toastMessage by remember { mutableStateOf("") }
     var toastType by remember { mutableStateOf(ToastType.INFO) }
 
-    val navigateToNoteDetail by viewModel.navigateToNoteDetail.collectAsState()
+    val navigateToNoteDetail by viewModel.navigateToNoteDetail.collectAsStateWithLifecycle()
 
     val screenPadding = when {
         screenWidth < 600.dp -> 16.dp
@@ -82,16 +82,12 @@ fun NoteScreen(
 
     var cannotAddNoteMessage = stringResource(id = R.string.cannot_add_note)
 
-    LaunchedEffect(listNote) {
-        viewModel.loadAllNotes()
-    }
-
     LaunchedEffect(uiState) {
         when {
             uiState.error != null -> {
                 showToast = true
-                toastMessage = cannotAddNoteMessage
-                toastType = ToastType.INFO
+                toastMessage = uiState.error.orEmpty()
+                toastType = ToastType.ERROR
                 viewModel.clearError()
             }
 
@@ -162,7 +158,7 @@ fun NoteScreen(
 
                         when {
                             !uiState.error.isNullOrEmpty() -> {
-                                ErrorState(error = uiState.error!!)
+                                ErrorState(error = uiState.error.orEmpty())
                             }
 
                             uiState.isCreatingNewNote && !uiState.error.isNullOrEmpty() -> {
@@ -228,7 +224,7 @@ fun NoteScreen(
 
 @Composable
 private fun ResponsiveNoteList(
-    notes: List<ListNoteItem>?,
+    notes: List<ListNoteItem>,
     onItemClick: (String) -> Unit,
     onItemDelete: (ListNoteItem) -> Unit,
     screenWidth: Dp,
@@ -262,7 +258,7 @@ private fun ResponsiveNoteList(
                     .background(MaterialTheme.colorScheme.background),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                itemsIndexed(notes ?: emptyList()) { _, item ->
+                items(notes, key = { it.id }) { item ->
                     ResponsiveNoteItem(
                         data = item,
                         onItemClick = onItemClick,
@@ -284,7 +280,6 @@ private fun ResponsiveNoteItem(
     screenWidth: Dp
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    LocalDensity.current
     var menuOffset by remember { mutableStateOf(Offset.Zero) }
 
     val cardPadding = if (screenWidth < 600.dp) 12.dp else 16.dp
@@ -293,7 +288,7 @@ private fun ResponsiveNoteItem(
 
     val isSystemDarkMode = isSystemInDarkTheme()
 
-    val color = if (data.predictedStatus != "Normal") {
+    val color = if (data.confidenceScore != null && data.predictedStatus != "Normal") {
         getColorBasedOnPercentage(isSystemDarkMode, predictedPercentage)
     } else {
         MaterialTheme.colorScheme.primary
@@ -337,7 +332,6 @@ private fun ResponsiveNoteItem(
                             cardPos.x + coordinates.size.width.toFloat(),
                             (-(cardHeight / 3))
                         )
-                        println(cardHeight)
                     },
             ) {
                 Column(
@@ -416,7 +410,11 @@ private fun ResponsiveNoteItem(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "$predictedPercentage% ${data.predictedStatus}",
+                    text = if (data.confidenceScore != null) {
+                        "$predictedPercentage% ${data.predictedStatus}"
+                    } else {
+                        data.predictedStatus.orEmpty()
+                    },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isSystemDarkMode) White else Black
