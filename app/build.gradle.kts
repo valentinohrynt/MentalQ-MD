@@ -12,6 +12,11 @@ fun configurationValue(name: String, fallback: String): String =
         ?: localProperties.getProperty(name)
         ?: fallback
 
+fun secureConfigurationValue(name: String): String? =
+    System.getenv(name)?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
@@ -55,9 +60,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val releaseStoreFile = secureConfigurationValue("RELEASE_STORE_FILE")
+            if (!releaseStoreFile.isNullOrBlank()) {
+                storeFile = file(releaseStoreFile)
+            }
+            storePassword = secureConfigurationValue("RELEASE_STORE_PASSWORD")
+            keyAlias = secureConfigurationValue("RELEASE_KEY_ALIAS")
+            keyPassword = secureConfigurationValue("RELEASE_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
