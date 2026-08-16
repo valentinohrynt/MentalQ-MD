@@ -55,7 +55,6 @@ import com.c242_ps246.mentalq.ui.navigation.Routes
 import com.c242_ps246.mentalq.ui.theme.Black
 import com.c242_ps246.mentalq.ui.theme.White
 import com.c242_ps246.mentalq.ui.utils.Utils.formatDate
-import com.c242_ps246.mentalq.ui.utils.Utils.getColorBasedOnPercentage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -263,15 +262,7 @@ private fun ResponsiveNoteItem(
 
     val cardPadding = if (screenWidth < 600.dp) 12.dp else 16.dp
 
-    val predictedPercentage = data.confidenceScore?.times(100)?.toInt() ?: 0
-
     val isSystemDarkMode = isSystemInDarkTheme()
-
-    val color = if (data.confidenceScore != null && data.predictedStatus != "Normal") {
-        getColorBasedOnPercentage(isSystemDarkMode, predictedPercentage)
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
 
     Card(
         modifier = Modifier
@@ -280,7 +271,7 @@ private fun ResponsiveNoteItem(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = color
+            containerColor = MaterialTheme.colorScheme.primary
         ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 1.dp
@@ -391,8 +382,6 @@ private fun ResponsiveNoteItem(
                 Text(
                     text = when {
                         data.pendingAction != null -> stringResource(R.string.syncing_note)
-                        data.confidenceScore != null ->
-                            "$predictedPercentage% ${data.predictedStatus}"
                         else -> data.predictedStatus.orEmpty()
                     },
                     fontSize = 16.sp,

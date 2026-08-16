@@ -5,14 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
-import androidx.compose.ui.graphics.Color
 import androidx.exifinterface.media.ExifInterface
-import com.c242_ps246.mentalq.ui.theme.OrangeDark
-import com.c242_ps246.mentalq.ui.theme.OrangeLight
-import com.c242_ps246.mentalq.ui.theme.RedDark
-import com.c242_ps246.mentalq.ui.theme.RedLight
-import com.c242_ps246.mentalq.ui.theme.YellowDark
-import com.c242_ps246.mentalq.ui.theme.YellowLight
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -124,11 +117,4 @@ object Utils {
         }
         return SimpleDateFormat(format, Locale.getDefault()).format(Date(timestamp))
     }
-
-    fun getColorBasedOnPercentage(isSystemDarkMode: Boolean, percentage: Int): Color =
-        when (percentage.coerceIn(0, 100)) {
-            in 0..33 -> if (isSystemDarkMode) YellowDark else YellowLight
-            in 34..66 -> if (isSystemDarkMode) OrangeDark else OrangeLight
-            else -> if (isSystemDarkMode) RedDark else RedLight
-        }
 }
