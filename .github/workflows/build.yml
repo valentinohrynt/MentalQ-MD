@@ -50,7 +50,7 @@ jobs:
       RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
       DRIVE_CREDENTIALS: ${{ secrets.CREDENTIALS }}
       DRIVE_FOLDER_ID: ${{ secrets.FOLDER_ID }}
-      ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: ${{ runner.temp }}/mentalq-release.jks
+      ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: app/release.keystore
       ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
       ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
       ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
@@ -97,7 +97,7 @@ jobs:
         run: |
           umask 077
           printf '%s' "$GS_CREDENTIALS" | base64 --decode > app/google-services.json
-          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mentalq-release.jks"
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > app/release.keystore
           printf 'GOOGLE_WEB_CLIENT_ID=%s\n' "$GOOGLE_WEB_CLIENT_ID" > local.properties
 
       - name: Build signed APK and app bundle
