@@ -44,12 +44,17 @@ class NoteDetailViewModel @Inject constructor(
         if (currentNoteId == noteId && _uiState.value.note != null) return
         currentNoteId = noteId
         savedStateHandle["noteId"] = noteId
+        val shouldRestoreDraft = savedStateHandle.get<String>(DRAFT_NOTE_ID) == noteId
 
         if (noteId == Routes.NEW_NOTE_ID) {
-            val restoredTitle = title.value
-            val restoredContent = content.value
-            val restoredEmotion = emotion.value
-            val restoredDate = date.value.ifBlank { Instant.now().toString() }
+            val restoredTitle = if (shouldRestoreDraft) title.value else ""
+            val restoredContent = if (shouldRestoreDraft) content.value else ""
+            val restoredEmotion = if (shouldRestoreDraft) emotion.value else ""
+            val restoredDate = if (shouldRestoreDraft) {
+                date.value.ifBlank { Instant.now().toString() }
+            } else {
+                Instant.now().toString()
+            }
             val draft = ListNoteItem(
                 id = Routes.NEW_NOTE_ID,
                 title = restoredTitle,
@@ -58,7 +63,11 @@ class NoteDetailViewModel @Inject constructor(
                 createdAt = restoredDate
             )
             _uiState.value = NoteDetailUiState(note = draft)
+            savedStateHandle["title"] = restoredTitle
+            savedStateHandle["content"] = restoredContent
             savedStateHandle["date"] = restoredDate
+            savedStateHandle["emotion"] = restoredEmotion
+            savedStateHandle[DRAFT_NOTE_ID] = noteId
             isDirty = restoredTitle.isNotBlank() || restoredContent.isNotBlank() ||
                 restoredEmotion.isNotBlank()
             return
@@ -71,9 +80,7 @@ class NoteDetailViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(isLoading = false, error = "Note not found")
                 return@launch
             }
-            val hasRestoredDraft = savedStateHandle.contains("title") ||
-                savedStateHandle.contains("content") || savedStateHandle.contains("emotion")
-            val visibleNote = if (hasRestoredDraft) {
+            val visibleNote = if (shouldRestoreDraft) {
                 note.copy(
                     title = title.value,
                     content = content.value,
@@ -87,6 +94,7 @@ class NoteDetailViewModel @Inject constructor(
             savedStateHandle["content"] = visibleNote.content.orEmpty()
             savedStateHandle["date"] = note.createdAt.orEmpty()
             savedStateHandle["emotion"] = visibleNote.emotion.orEmpty()
+            savedStateHandle[DRAFT_NOTE_ID] = noteId
             isDirty = visibleNote.title != note.title || visibleNote.content != note.content ||
                 visibleNote.emotion != note.emotion
         }
@@ -176,5 +184,9 @@ class NoteDetailViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private companion object {
+        const val DRAFT_NOTE_ID = "draft_note_id"
     }
 }

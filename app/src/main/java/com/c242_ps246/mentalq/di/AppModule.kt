@@ -6,6 +6,7 @@ import androidx.work.WorkManager
 import com.c242_ps246.mentalq.BuildConfig
 import com.c242_ps246.mentalq.data.local.room.AnalysisDao
 import com.c242_ps246.mentalq.data.local.room.MIGRATION_12_13
+import com.c242_ps246.mentalq.data.local.room.MIGRATION_13_14
 import com.c242_ps246.mentalq.data.local.room.LEGACY_CACHE_MIGRATIONS
 import com.c242_ps246.mentalq.data.local.room.MentalQDatabase
 import com.c242_ps246.mentalq.data.local.room.NoteDao
@@ -137,7 +138,7 @@ object AppModule {
     @Singleton
     fun provideMentalQDatabase(@ApplicationContext context: Context): MentalQDatabase =
         Room.databaseBuilder(context, MentalQDatabase::class.java, "mentalq_database")
-            .addMigrations(MIGRATION_12_13)
+            .addMigrations(MIGRATION_12_13, MIGRATION_13_14)
             .addMigrations(*LEGACY_CACHE_MIGRATIONS.toTypedArray())
             .build()
 

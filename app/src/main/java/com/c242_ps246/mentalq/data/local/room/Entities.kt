@@ -13,8 +13,15 @@ data class NoteEntity(
     val confidenceScore: Float? = null,
     val emotion: String? = null,
     val updatedAt: String? = null,
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    val pendingAction: String? = null
 )
+
+object NotePendingAction {
+    const val CREATE = "CREATE"
+    const val UPDATE = "UPDATE"
+    const val DELETE = "DELETE"
+}
 
 @Entity(tableName = "user_data")
 data class UserEntity(

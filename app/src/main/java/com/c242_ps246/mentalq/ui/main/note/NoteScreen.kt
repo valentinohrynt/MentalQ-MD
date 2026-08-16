@@ -381,7 +381,7 @@ private fun ResponsiveNoteItem(
                 }
             }
         }
-        if (data.predictedStatus != null) {
+        if (data.pendingAction != null || data.predictedStatus != null) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -389,10 +389,11 @@ private fun ResponsiveNoteItem(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (data.confidenceScore != null) {
-                        "$predictedPercentage% ${data.predictedStatus}"
-                    } else {
-                        data.predictedStatus.orEmpty()
+                    text = when {
+                        data.pendingAction != null -> stringResource(R.string.syncing_note)
+                        data.confidenceScore != null ->
+                            "$predictedPercentage% ${data.predictedStatus}"
+                        else -> data.predictedStatus.orEmpty()
                     },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,

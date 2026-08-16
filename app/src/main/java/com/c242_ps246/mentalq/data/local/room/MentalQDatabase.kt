@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [NoteEntity::class, UserEntity::class, AnalysisEntity::class],
-    version = 13,
+    version = 14,
     exportSchema = true
 )
 abstract class MentalQDatabase : RoomDatabase() {
@@ -23,10 +23,16 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `note` ADD COLUMN `pendingAction` TEXT")
+    }
+}
+
 // Versions 1-11 never exported schemas and only stored server-backed cache data.
 // Rebuild those cache tables explicitly instead of enabling Room's global destructive fallback.
 val LEGACY_CACHE_MIGRATIONS: List<Migration> = (1..11).map { oldVersion ->
-    object : Migration(oldVersion, 13) {
+    object : Migration(oldVersion, 14) {
         override fun migrate(db: SupportSQLiteDatabase) {
             listOf(
                 "note",
@@ -48,6 +54,7 @@ val LEGACY_CACHE_MIGRATIONS: List<Migration> = (1..11).map { oldVersion ->
                     `emotion` TEXT,
                     `updatedAt` TEXT,
                     `createdAt` TEXT,
+                    `pendingAction` TEXT,
                     PRIMARY KEY(`id`)
                 )""".trimIndent()
             )

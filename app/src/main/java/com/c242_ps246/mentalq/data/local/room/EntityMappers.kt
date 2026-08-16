@@ -6,12 +6,12 @@ import com.c242_ps246.mentalq.data.remote.response.UserData
 
 fun ListNoteItem.toEntity() = NoteEntity(
     id, title, content, contentNormalized, predictedStatus, confidenceScore,
-    emotion, updatedAt, createdAt
+    emotion, updatedAt, createdAt, pendingAction
 )
 
 fun NoteEntity.toModel() = ListNoteItem(
     id, title, content, contentNormalized, predictedStatus, confidenceScore,
-    emotion, updatedAt, createdAt
+    emotion, updatedAt, createdAt, pendingAction
 )
 
 fun UserData.toEntity() = UserEntity(id, name, email, birthday, profilePhotoUrl, role)

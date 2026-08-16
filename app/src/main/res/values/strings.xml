@@ -114,6 +114,7 @@
     <string name="agree_to_terms_prefix">I agree to the</string>
     <string name="error_terms_not_accepted">Please accept the Terms of Service to continue</string>
     <string name="cannot_add_note">You have already added a note for today, come back again tomorrow!</string>
+    <string name="syncing_note">Syncing diagnosis…</string>
     <string name="back">Back</string>
 
     <string name="voice_error_cant_hear">Can\'t hear you. Please speak louder</string>

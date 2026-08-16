@@ -48,6 +48,7 @@ class DashboardViewModel @Inject constructor(
     private var notesJob: Job? = null
     private var analysisJob: Job? = null
     private var userJob: Job? = null
+    private var hadPendingNotes = false
 
     fun refresh() {
         loadLatestNotes()
@@ -64,11 +65,19 @@ class DashboardViewModel @Inject constructor(
                     when (result) {
                         Result.Loading -> Unit
                         is Result.Success -> {
+                            val hasPendingNotes = result.data.any { it.pendingAction != null }
+                            val noteSyncJustFinished = hadPendingNotes && !hasPendingNotes
+                            hadPendingNotes = hasPendingNotes
                             _listNote.value = result.data.take(5)
                             updateStreak(result.data)
                             clearError()
+                            stopLoading(NOTES)
+                            if (noteSyncJustFinished) getPredictedStatusMode()
                         }
-                        is Result.Error -> setError(result.error)
+                        is Result.Error -> {
+                            setError(result.error)
+                            stopLoading(NOTES)
+                        }
                     }
                 }
             } finally {

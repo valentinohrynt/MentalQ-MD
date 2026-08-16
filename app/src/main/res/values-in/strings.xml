@@ -114,6 +114,7 @@
     <string name="agree_to_terms_prefix">Saya menyetujui</string>
     <string name="error_terms_not_accepted">Harap terima Syarat Layanan untuk melanjutkan</string>
     <string name="cannot_add_note">Anda sudah menambahkan catatan untuk hari ini, datang lagi besok!</string>
+    <string name="syncing_note">Menyinkronkan diagnosis…</string>
     <string name="back">Kembali</string>
 
     <string name="voice_error_cant_hear">Tidak dapat mendengar Anda. Silakan bicara lebih keras</string>

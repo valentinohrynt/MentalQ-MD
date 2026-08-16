@@ -58,5 +58,9 @@ data class ListNoteItem(
     val updatedAt: String? = null,
 
     @field:SerializedName("createdAt")
-    val createdAt: String? = null
+    val createdAt: String? = null,
+
+    // Local-only state. The backend never reads this field because note writes
+    // use explicit form fields in NoteApiService.
+    val pendingAction: String? = null
 )
