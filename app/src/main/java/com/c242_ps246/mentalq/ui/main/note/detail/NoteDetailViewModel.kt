@@ -6,11 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
 import com.c242_ps246.mentalq.data.repository.NoteRepository
 import com.c242_ps246.mentalq.data.repository.Result
+import com.c242_ps246.mentalq.ui.navigation.Routes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.time.Instant
 import javax.inject.Inject
 
 data class NoteDetailUiState(
@@ -26,7 +28,7 @@ class NoteDetailViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(NoteDetailUiState())
+    private val _uiState = MutableStateFlow(NoteDetailUiState(isLoading = true))
     val uiState = _uiState.asStateFlow()
 
     val title = savedStateHandle.getStateFlow("title", "")
@@ -43,6 +45,25 @@ class NoteDetailViewModel @Inject constructor(
         currentNoteId = noteId
         savedStateHandle["noteId"] = noteId
 
+        if (noteId == Routes.NEW_NOTE_ID) {
+            val restoredTitle = title.value
+            val restoredContent = content.value
+            val restoredEmotion = emotion.value
+            val restoredDate = date.value.ifBlank { Instant.now().toString() }
+            val draft = ListNoteItem(
+                id = Routes.NEW_NOTE_ID,
+                title = restoredTitle,
+                content = restoredContent,
+                emotion = restoredEmotion,
+                createdAt = restoredDate
+            )
+            _uiState.value = NoteDetailUiState(note = draft)
+            savedStateHandle["date"] = restoredDate
+            isDirty = restoredTitle.isNotBlank() || restoredContent.isNotBlank() ||
+                restoredEmotion.isNotBlank()
+            return
+        }
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             val note = noteRepository.getNoteById(noteId)
@@ -50,12 +71,24 @@ class NoteDetailViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(isLoading = false, error = "Note not found")
                 return@launch
             }
-            _uiState.value = NoteDetailUiState(note = note)
-            savedStateHandle["title"] = note.title.orEmpty()
-            savedStateHandle["content"] = note.content.orEmpty()
+            val hasRestoredDraft = savedStateHandle.contains("title") ||
+                savedStateHandle.contains("content") || savedStateHandle.contains("emotion")
+            val visibleNote = if (hasRestoredDraft) {
+                note.copy(
+                    title = title.value,
+                    content = content.value,
+                    emotion = emotion.value
+                )
+            } else {
+                note
+            }
+            _uiState.value = NoteDetailUiState(note = visibleNote)
+            savedStateHandle["title"] = visibleNote.title.orEmpty()
+            savedStateHandle["content"] = visibleNote.content.orEmpty()
             savedStateHandle["date"] = note.createdAt.orEmpty()
-            savedStateHandle["emotion"] = note.emotion.orEmpty()
-            isDirty = false
+            savedStateHandle["emotion"] = visibleNote.emotion.orEmpty()
+            isDirty = visibleNote.title != note.title || visibleNote.content != note.content ||
+                visibleNote.emotion != note.emotion
         }
     }
 
@@ -69,12 +102,15 @@ class NoteDetailViewModel @Inject constructor(
         savedStateHandle[key] = value
         isDirty = true
         _uiState.value.note?.let { note ->
+            val updatedNote = when (key) {
+                "title" -> note.copy(title = value)
+                "content" -> note.copy(content = value)
+                "emotion" -> note.copy(emotion = value)
+                else -> note
+            }
             _uiState.value = _uiState.value.copy(
-                note = note.copy(
-                    title = title.value,
-                    content = content.value,
-                    emotion = emotion.value
-                ),
+                note = updatedNote,
+                error = null,
                 isSuccess = false
             )
         }
@@ -83,7 +119,27 @@ class NoteDetailViewModel @Inject constructor(
     fun saveNoteImmediately() {
         updateJob?.cancel()
         val currentNote = _uiState.value.note ?: return
-        if (!isDirty) {
+        val titleValue = title.value.trim()
+        val contentValue = content.value.trim()
+        val emotionValue = emotion.value.trim()
+        val isNewNote = currentNote.id == Routes.NEW_NOTE_ID
+        val isEmptyDraft = titleValue.isEmpty() &&
+            contentValue.isEmpty() && emotionValue.isEmpty()
+
+        if (isNewNote && isEmptyDraft) {
+            _uiState.value = _uiState.value.copy(isSuccess = true)
+            return
+        }
+
+        if (contentValue.isEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                error = "Please write something before saving the note",
+                isSuccess = false
+            )
+            return
+        }
+
+        if (!isDirty && !isNewNote) {
             _uiState.value = _uiState.value.copy(isSuccess = true)
             return
         }
@@ -91,11 +147,16 @@ class NoteDetailViewModel @Inject constructor(
         updateJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true, error = null)
             val updatedNote = currentNote.copy(
-                title = title.value,
-                content = content.value,
-                emotion = emotion.value
+                title = titleValue,
+                content = contentValue,
+                emotion = emotionValue
             )
-            when (val result = noteRepository.updateNote(updatedNote)) {
+            val result = if (isNewNote) {
+                noteRepository.insertNote(updatedNote)
+            } else {
+                noteRepository.updateNote(updatedNote)
+            }
+            when (result) {
                 Result.Loading -> Unit
                 is Result.Success -> {
                     isDirty = false
@@ -111,5 +172,9 @@ class NoteDetailViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
     }
 }

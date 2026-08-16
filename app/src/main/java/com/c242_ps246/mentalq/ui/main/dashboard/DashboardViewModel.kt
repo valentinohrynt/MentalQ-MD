@@ -49,10 +49,6 @@ class DashboardViewModel @Inject constructor(
     private var analysisJob: Job? = null
     private var userJob: Job? = null
 
-    init {
-        refresh()
-    }
-
     fun refresh() {
         loadLatestNotes()
         getUserData()

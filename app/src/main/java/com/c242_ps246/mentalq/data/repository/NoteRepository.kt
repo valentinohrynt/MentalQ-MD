@@ -19,8 +19,14 @@ class NoteRepository @Inject constructor(
 ) {
     fun getAllNotes(): Flow<Result<List<ListNoteItem>>> = flow {
         emit(Result.Loading)
+        var hasDiscardedLocalDrafts = false
         val localNotes = try {
-            noteDao.getAllNotes().map { it.toModel() }.sortedByDescending { it.createdAt }
+            val storedNotes = noteDao.getAllNotes().map { it.toModel() }
+            val usableNotes = storedNotes
+                .filter(ListNoteItem::hasUsableContent)
+                .sortedByDescending { it.createdAt }
+            hasDiscardedLocalDrafts = usableNotes.size != storedNotes.size
+            usableNotes
         } catch (error: Exception) {
             emit(Result.Error(error.toUserMessage("Unable to read saved notes")))
             return@flow
@@ -31,8 +37,9 @@ class NoteRepository @Inject constructor(
         try {
             val remoteNotes = noteApiService.getNotes().listNote
                 .orEmpty()
+                .filter(ListNoteItem::hasUsableContent)
                 .sortedByDescending { it.createdAt }
-            if (remoteNotes != localNotes) {
+            if (remoteNotes != localNotes || hasDiscardedLocalDrafts) {
                 noteDao.replaceAllNotes(remoteNotes.map { it.toEntity() })
             }
             emit(Result.Success(remoteNotes))
@@ -46,41 +53,47 @@ class NoteRepository @Inject constructor(
     suspend fun getNoteById(noteId: String): ListNoteItem? =
         runCatching { noteDao.getNoteById(noteId)?.toModel() }.getOrNull()
 
-    suspend fun insertNote(note: ListNoteItem): Result<ListNoteItem> = try {
-        val response = noteApiService.createNote(
-            title = note.title.orEmpty(),
-            content = note.content.orEmpty(),
-            emotion = note.emotion.orEmpty()
-        )
-        val createdNote = response.note
-        if (response.error == true || createdNote == null) {
-            Result.Error(response.message ?: "Unable to create the note")
-        } else {
-            noteDao.insertNote(createdNote.toEntity())
-            Result.Success(createdNote)
+    suspend fun insertNote(note: ListNoteItem): Result<ListNoteItem> =
+        if (!note.hasUsableContent()) {
+            Result.Error("Please write something before saving the note")
+        } else try {
+            val response = noteApiService.createNote(
+                title = note.title.orEmpty().trim(),
+                content = note.content.orEmpty().trim(),
+                emotion = note.emotion.orEmpty().trim()
+            )
+            val createdNote = response.note
+            if (response.error == true || createdNote == null) {
+                Result.Error(response.message ?: "Unable to create the note")
+            } else {
+                noteDao.insertNote(createdNote.toEntity())
+                Result.Success(createdNote)
+            }
+        } catch (error: Exception) {
+            Result.Error(error.toUserMessage("Unable to create the note"))
         }
-    } catch (error: Exception) {
-        Result.Error(error.toUserMessage("Unable to create the note"))
-    }
 
-    suspend fun updateNote(note: ListNoteItem): Result<ListNoteItem> = try {
-        val response = noteApiService.updateNote(
-            id = note.id,
-            title = note.title.orEmpty(),
-            content = note.content.orEmpty(),
-            emotion = note.emotion.orEmpty()
-        )
+    suspend fun updateNote(note: ListNoteItem): Result<ListNoteItem> =
+        if (!note.hasUsableContent()) {
+            Result.Error("Please write something before saving the note")
+        } else try {
+            val response = noteApiService.updateNote(
+                id = note.id,
+                title = note.title.orEmpty().trim(),
+                content = note.content.orEmpty().trim(),
+                emotion = note.emotion.orEmpty().trim()
+            )
 
-        if (response.error == true) {
-            Result.Error(response.message ?: "Unable to update the note")
-        } else {
-            val updatedNote = response.note ?: note.copy(contentNormalized = null)
-            noteDao.updateNote(updatedNote.toEntity())
-            Result.Success(updatedNote)
+            if (response.error == true) {
+                Result.Error(response.message ?: "Unable to update the note")
+            } else {
+                val updatedNote = response.note ?: note.copy(contentNormalized = null)
+                noteDao.updateNote(updatedNote.toEntity())
+                Result.Success(updatedNote)
+            }
+        } catch (error: Exception) {
+            Result.Error(error.toUserMessage("Unable to update the note"))
         }
-    } catch (error: Exception) {
-        Result.Error(error.toUserMessage("Unable to update the note"))
-    }
 
     suspend fun deleteNoteById(noteId: String): Result<String> = try {
         val response = noteApiService.deleteNote(noteId)
@@ -94,6 +107,13 @@ class NoteRepository @Inject constructor(
         Result.Error(error.toUserMessage("Unable to delete the note"))
     }
 
-    suspend fun getLastNote(): ListNoteItem? =
-        runCatching { noteDao.getLastNote()?.toModel() }.getOrNull()
+    suspend fun getLastNote(): ListNoteItem? = runCatching {
+        noteDao.getAllNotes()
+            .asSequence()
+            .map { it.toModel() }
+            .filter(ListNoteItem::hasUsableContent)
+            .maxByOrNull { it.createdAt.orEmpty() }
+    }.getOrNull()
 }
+
+private fun ListNoteItem.hasUsableContent(): Boolean = !content.isNullOrBlank()

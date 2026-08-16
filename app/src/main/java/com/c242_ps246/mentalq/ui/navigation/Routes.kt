@@ -7,6 +7,7 @@ object Routes {
     const val NOTE = "note"
     const val PROFILE = "profile"
     const val NOTE_DETAIL = "note_detail"
+    const val NEW_NOTE_ID = "new"
     const val CHAT = "chat"
     const val CHAT_ROOM = "chat_room"
     const val PSYCHOLOGIST_MAIN_SCREEN = "psychologist_main_screen"

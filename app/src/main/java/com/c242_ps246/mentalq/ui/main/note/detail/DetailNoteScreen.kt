@@ -66,7 +66,6 @@ fun DetailNoteScreen(
     val content: String by viewModel.content.collectAsStateWithLifecycle()
     val date: String by viewModel.date.collectAsStateWithLifecycle()
     val selectedEmotion: String by viewModel.emotion.collectAsStateWithLifecycle()
-    var isSaveTriggered by remember { mutableStateOf(false) }
     val voiceToTextParser = remember { VoiceToTextParser(application) }
     DisposableEffect(voiceToTextParser) {
         onDispose(voiceToTextParser::destroy)
@@ -75,10 +74,10 @@ fun DetailNoteScreen(
 
     fun handleBack() {
         keyboardController?.hide()
-        if (!isSaveTriggered) {
-            isSaveTriggered = true
+        if (uiState.note == null) {
+            onBackClick()
+        } else if (!uiState.isSaving) {
             viewModel.saveNoteImmediately()
-
         }
     }
 
@@ -92,7 +91,6 @@ fun DetailNoteScreen(
 
     LaunchedEffect(uiState.isSuccess) {
         if (uiState.isSuccess) {
-            isSaveTriggered = false
             onBackClick()
         }
     }
@@ -138,12 +136,12 @@ fun DetailNoteScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
-        } else if (uiState.error != null) {
+        } else if (uiState.note == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Error: ${uiState.error}")
+                Text("Error: ${uiState.error ?: stringResource(R.string.no_notes)}")
             }
         } else {
             Column(
@@ -254,6 +252,14 @@ fun DetailNoteScreen(
                     }
                 }
             }
+        }
+
+        if (uiState.error != null && uiState.note != null) {
+            CustomToast(
+                message = uiState.error.orEmpty(),
+                type = ToastType.ERROR,
+                onDismiss = viewModel::clearError
+            )
         }
     }
 }

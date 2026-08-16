@@ -8,7 +8,6 @@ import com.c242_ps246.mentalq.data.repository.Result
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -18,10 +17,7 @@ import javax.inject.Inject
 
 data class NoteScreenUiState(
     val isLoading: Boolean = true,
-    val note: ListNoteItem? = null,
-    val success: Boolean = false,
     val error: String? = null,
-    val isCreatingNewNote: Boolean = false,
     val canAddNewNote: Boolean = true
 )
 
@@ -35,14 +31,7 @@ class NoteViewModel @Inject constructor(
     private val _listNote = MutableStateFlow<List<ListNoteItem>>(emptyList())
     val listNote = _listNote.asStateFlow()
 
-    private val _navigateToNoteDetail = MutableStateFlow<String?>(null)
-    val navigateToNoteDetail: StateFlow<String?> = _navigateToNoteDetail.asStateFlow()
-
     private var notesJob: Job? = null
-
-    init {
-        loadAllNotes()
-    }
 
     private fun isNoteTodayAlreadyAdded(): Boolean {
         val today = LocalDate.now(APP_ZONE)
@@ -66,7 +55,6 @@ class NoteViewModel @Inject constructor(
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
                             error = null,
-                            success = true,
                             canAddNewNote = !isNoteTodayAlreadyAdded()
                         )
                     }
@@ -75,41 +63,6 @@ class NoteViewModel @Inject constructor(
                         error = result.error
                     )
                 }
-            }
-        }
-    }
-
-    fun addNote(note: ListNoteItem) {
-        if (isNoteTodayAlreadyAdded()) {
-            _uiState.value = _uiState.value.copy(
-                isCreatingNewNote = false,
-                isLoading = false,
-                canAddNewNote = false
-            )
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isCreatingNewNote = true, error = null)
-            when (val result = noteRepository.insertNote(note)) {
-                Result.Loading -> Unit
-                is Result.Success -> {
-                    _listNote.value = (_listNote.value + result.data)
-                        .sortedByDescending { it.createdAt }
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        isCreatingNewNote = false,
-                        error = null,
-                        success = true,
-                        canAddNewNote = false
-                    )
-                    _navigateToNoteDetail.value = result.data.id
-                }
-                is Result.Error -> _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    isCreatingNewNote = false,
-                    error = result.error
-                )
             }
         }
     }
@@ -123,7 +76,6 @@ class NoteViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         error = null,
-                        success = true,
                         canAddNewNote = !isNoteTodayAlreadyAdded()
                     )
                 }
@@ -133,10 +85,6 @@ class NoteViewModel @Inject constructor(
                 )
             }
         }
-    }
-
-    fun navigateToNoteDetailCompleted() {
-        _navigateToNoteDetail.value = null
     }
 
     fun clearError() {

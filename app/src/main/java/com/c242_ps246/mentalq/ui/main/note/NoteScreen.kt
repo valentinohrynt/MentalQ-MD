@@ -51,6 +51,7 @@ import com.c242_ps246.mentalq.data.remote.response.ListNoteItem
 import com.c242_ps246.mentalq.ui.component.CustomToast
 import com.c242_ps246.mentalq.ui.component.EmptyState
 import com.c242_ps246.mentalq.ui.component.ToastType
+import com.c242_ps246.mentalq.ui.navigation.Routes
 import com.c242_ps246.mentalq.ui.theme.Black
 import com.c242_ps246.mentalq.ui.theme.White
 import com.c242_ps246.mentalq.ui.utils.Utils.formatDate
@@ -72,37 +73,24 @@ fun NoteScreen(
     var toastMessage by remember { mutableStateOf("") }
     var toastType by remember { mutableStateOf(ToastType.INFO) }
 
-    val navigateToNoteDetail by viewModel.navigateToNoteDetail.collectAsStateWithLifecycle()
-
     val screenPadding = when {
         screenWidth < 600.dp -> 16.dp
         screenWidth < 840.dp -> 24.dp
         else -> 32.dp
     }
 
-    var cannotAddNoteMessage = stringResource(id = R.string.cannot_add_note)
+    val cannotAddNoteMessage = stringResource(id = R.string.cannot_add_note)
 
-    LaunchedEffect(uiState) {
-        when {
-            uiState.error != null -> {
-                showToast = true
-                toastMessage = uiState.error.orEmpty()
-                toastType = ToastType.ERROR
-                viewModel.clearError()
-            }
-
-            uiState.canAddNewNote == false -> {
-                showToast = true
-                toastMessage = cannotAddNoteMessage
-                toastType = ToastType.INFO
-            }
-        }
+    LaunchedEffect(Unit) {
+        viewModel.loadAllNotes()
     }
 
-    LaunchedEffect(navigateToNoteDetail) {
-        navigateToNoteDetail?.let { noteId ->
-            onNavigateToNoteDetail(noteId)
-            viewModel.navigateToNoteDetailCompleted()
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { error ->
+            showToast = true
+            toastMessage = error
+            toastType = ToastType.ERROR
+            viewModel.clearError()
         }
     }
 
@@ -113,16 +101,15 @@ fun NoteScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            viewModel.addNote(
-                                ListNoteItem(
-                                    id = "",
-                                    title = "",
-                                    content = "",
-                                    emotion = ""
-                                )
-                            )
+                            if (uiState.canAddNewNote) {
+                                onNavigateToNoteDetail(Routes.NEW_NOTE_ID)
+                            } else {
+                                showToast = true
+                                toastMessage = cannotAddNoteMessage
+                                toastType = ToastType.INFO
+                            }
                         },
-                        enabled = !uiState.isCreatingNewNote && uiState.error.isNullOrEmpty(),
+                        enabled = !uiState.isLoading && uiState.error.isNullOrEmpty(),
                         colors = IconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -157,15 +144,7 @@ fun NoteScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         when {
-                            !uiState.error.isNullOrEmpty() -> {
-                                ErrorState(error = uiState.error.orEmpty())
-                            }
-
-                            uiState.isCreatingNewNote && !uiState.error.isNullOrEmpty() -> {
-                                CreatingNoteState()
-                            }
-
-                            listNote.isNullOrEmpty() -> {
+                            listNote.isEmpty() -> {
                                 EmptyState(
                                     title = stringResource(R.string.no_notes),
                                     subtitle = stringResource(R.string.no_notes_desc)
@@ -193,7 +172,7 @@ fun NoteScreen(
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 ResponsiveNoteList(
-                                    notes = listNote ?: emptyList(),
+                                    notes = listNote,
                                     onItemClick = onNavigateToNoteDetail,
                                     onItemDelete = { note -> viewModel.deleteNote(note.id) },
                                     screenWidth = screenWidth,
@@ -421,38 +400,6 @@ private fun ResponsiveNoteItem(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ErrorState(error: String) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = error,
-            color = MaterialTheme.colorScheme.error
-        )
-    }
-}
-
-@Composable
-private fun CreatingNoteState() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = stringResource(id = R.string.creating_note),
-            style = TextStyle(
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            ),
-            color = MaterialTheme.colorScheme.onSurface
-        )
     }
 }
 
