@@ -15,4 +15,6 @@
 local.properties
 gradle.properties
 debug.keystore
+*.jks
+*.keystore
 /app/google-services.json
