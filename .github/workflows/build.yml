@@ -1,178 +1,154 @@
-name: CI
+name: Android CI and Release
+
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
+  test:
+    name: Test and debug build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4.5.0
+        uses: actions/setup-java@v4
         with:
-          distribution: 'adopt'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests and debug build
+        run: ./gradlew testDebugUnitTest assembleDebug
+
+  release:
+    name: Signed release
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GS_CREDENTIALS: ${{ secrets.GS_CREDENTIALS }}
+      GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      DRIVE_CREDENTIALS: ${{ secrets.CREDENTIALS }}
+      DRIVE_FOLDER_ID: ${{ secrets.FOLDER_ID }}
+      ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: ${{ runner.temp }}/mentalq-release.jks
+      ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+      ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      ORG_GRADLE_PROJECT_VERSION_CODE: ${{ github.run_number }}
+      ORG_GRADLE_PROJECT_VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Validate required secrets
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
-          GS_CREDENTIALS: ${{ secrets.GS_CREDENTIALS }}
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
         run: |
-          missing=0
-          for name in GEMINI_API_KEY GOOGLE_WEB_CLIENT_ID GS_CREDENTIALS RELEASE_KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing GitHub Actions secret: $name"
-              missing=1
+          missing=()
+          for name in \
+            GS_CREDENTIALS \
+            GOOGLE_WEB_CLIENT_ID \
+            RELEASE_KEYSTORE_BASE64 \
+            RELEASE_STORE_PASSWORD \
+            RELEASE_KEY_ALIAS \
+            RELEASE_KEY_PASSWORD \
+            DRIVE_CREDENTIALS \
+            DRIVE_FOLDER_ID; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
             fi
           done
-          if [ "$missing" -ne 0 ]; then
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required repository secrets: %s\n' "${missing[*]}" >&2
             exit 1
           fi
 
-      - name: Create local.properties
-        run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > local.properties
-          echo "GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}" >> local.properties
-
-      - name: Set up google-services.json
-        run: |
-          echo "${{ secrets.GS_CREDENTIALS }}" | base64 -d > ./app/google-services.json
+      - name: Prepare Firebase and signing files
         shell: bash
-
-      - name: Restore release keystore
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > ./app/release.keystore
-          test -s ./app/release.keystore
+          umask 077
+          printf '%s' "$GS_CREDENTIALS" | base64 --decode > app/google-services.json
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mentalq-release.jks"
+          printf 'GOOGLE_WEB_CLIENT_ID=%s\n' "$GOOGLE_WEB_CLIENT_ID" > local.properties
 
-      - name: Show release certificate fingerprints
-        env:
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-        run: |
-          keytool -list -v \
-            -keystore ./app/release.keystore \
-            -alias "$RELEASE_KEY_ALIAS" \
-            -storepass "$RELEASE_STORE_PASSWORD" \
-            | grep -E 'SHA1:|SHA256:'
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Build signed release APK
-        env:
-          RELEASE_STORE_FILE: release.keystore
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace --info
+      - name: Build signed APK and app bundle
+        run: ./gradlew testReleaseUnitTest assembleRelease bundleRelease
 
       - name: Verify APK signature
+        shell: bash
         run: |
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          "$APKSIGNER" verify --verbose --print-certs ./app/build/outputs/apk/release/app-release.apk
+          apksigner_path="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$apksigner_path" ]]; then
+            echo "apksigner was not found" >&2
+            exit 1
+          fi
+          "$apksigner_path" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@main
+      - name: Name release artifacts
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "MentalQ-${GITHUB_RUN_NUMBER}.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "MentalQ-${GITHUB_RUN_NUMBER}.aab"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MentalQ-release-${{ github.run_number }}
+          path: |
+            MentalQ-${{ github.run_number }}.apk
+            MentalQ-${{ github.run_number }}.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload signed APK to Google Drive
+        uses: adityak74/google-drive-upload-git-action@935eccf4c2812e4d492c3d7c7ff59ca7520bf129
         with:
           credentials: ${{ secrets.CREDENTIALS }}
-          filename: "./app/build/outputs/apk/release/app-release.apk"
+          filename: app/build/outputs/apk/release/app-release.apk
           folderId: ${{ secrets.FOLDER_ID }}
           overwrite: "true"
 
-      - name: Set Version
-        id: version
-        run: |
-          VERSION="v$(date +'%Y.%m.%d')"
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      - name: Set release tag
+        id: release
+        shell: bash
+        run: echo "tag=v$(date -u +'%Y.%m.%d')-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
-      - name: Check and Create Tag
-        id: check_tag
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-
-          git fetch origin tag $VERSION || true
-
-          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null || \
-             git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null; then
-            echo "Tag $VERSION already exists"
-            echo "TAG_EXISTS=true" >> $GITHUB_OUTPUT
-          else
-            git tag $VERSION
-            git push origin $VERSION
-            echo "TAG_EXISTS=false" >> $GITHUB_OUTPUT
-          fi
-        continue-on-error: true
-
-      - name: Get Release ID
-        id: get_release
-        run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
-
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$VERSION")
-
-          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
-
-          if [ "$RELEASE_ID" != "null" ]; then
-            echo "RELEASE_ID=$RELEASE_ID" >> $GITHUB_OUTPUT
-            echo "RELEASE_EXISTS=true" >> $GITHUB_OUTPUT
-          else
-            echo "RELEASE_EXISTS=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Update Existing Release
-        if: steps.get_release.outputs.RELEASE_EXISTS == 'true'
-        run: |
-          RELEASE_ID="${{ steps.get_release.outputs.RELEASE_ID }}"
-
-          ASSETS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets")
-
-          echo "$ASSETS" | jq -r '.[] | select(.name=="app-release.apk") | .id' | while read ASSET_ID; do
-            curl -X DELETE \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/assets/$ASSET_ID"
-          done
-
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/vnd.android.package-archive" \
-            --data-binary @"./app/build/outputs/apk/release/app-release.apk" \
-            "https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=app-release.apk"
-
-      - name: Create New Release
-        if: steps.get_release.outputs.RELEASE_EXISTS != 'true'
+      - name: Publish GitHub prerelease
         uses: softprops/action-gh-release@v2
         with:
-          files: ./app/build/outputs/apk/release/app-release.apk
-          tag_name: ${{ steps.version.outputs.VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: MentalQ ${{ steps.release.outputs.tag }}
+          prerelease: true
+          generate_release_notes: true
+          files: |
+            MentalQ-${{ github.run_number }}.apk
+            MentalQ-${{ github.run_number }}.aab

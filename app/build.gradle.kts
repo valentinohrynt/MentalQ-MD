@@ -12,13 +12,32 @@ fun configurationValue(name: String, fallback: String): String =
         ?: localProperties.getProperty(name)
         ?: fallback
 
-fun secureConfigurationValue(name: String): String? =
-    System.getenv(name)?.takeIf { it.isNotBlank() }
-        ?: providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
-        ?: localProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+fun optionalConfigurationValue(name: String): String? =
+    (providers.gradleProperty(name).orNull ?: localProperties.getProperty(name))
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
 
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val releaseSigningValues = mapOf(
+    "RELEASE_STORE_FILE" to optionalConfigurationValue("RELEASE_STORE_FILE"),
+    "RELEASE_STORE_PASSWORD" to optionalConfigurationValue("RELEASE_STORE_PASSWORD"),
+    "RELEASE_KEY_ALIAS" to optionalConfigurationValue("RELEASE_KEY_ALIAS"),
+    "RELEASE_KEY_PASSWORD" to optionalConfigurationValue("RELEASE_KEY_PASSWORD"),
+)
+val missingReleaseSigningValues = releaseSigningValues
+    .filterValues { it == null }
+    .keys
+val releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+
+if (releaseTaskRequested && missingReleaseSigningValues.isNotEmpty()) {
+    throw GradleException(
+        "Release signing is incomplete. Missing: ${missingReleaseSigningValues.joinToString()}"
+    )
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -40,8 +59,8 @@ android {
         applicationId = "com.c242_ps246.mentalq"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = optionalConfigurationValue("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = optionalConfigurationValue("VERSION_NAME") ?: "1.0"
 
         buildConfigField(
             "String",
@@ -61,21 +80,22 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            val releaseStoreFile = secureConfigurationValue("RELEASE_STORE_FILE")
-            if (!releaseStoreFile.isNullOrBlank()) {
-                storeFile = file(releaseStoreFile)
+        if (missingReleaseSigningValues.isEmpty()) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningValues.getValue("RELEASE_STORE_FILE")!!)
+                storePassword = releaseSigningValues.getValue("RELEASE_STORE_PASSWORD")
+                keyAlias = releaseSigningValues.getValue("RELEASE_KEY_ALIAS")
+                keyPassword = releaseSigningValues.getValue("RELEASE_KEY_PASSWORD")
             }
-            storePassword = secureConfigurationValue("RELEASE_STORE_PASSWORD")
-            keyAlias = secureConfigurationValue("RELEASE_KEY_ALIAS")
-            keyPassword = secureConfigurationValue("RELEASE_KEY_PASSWORD")
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            if (missingReleaseSigningValues.isEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
